@@ -17,6 +17,8 @@ int FloatingCount();
 const char* EmbedTitle(const Block& b);
 // Begin() de painel: transparente quando acoplado; com fundo animado quando vira janela própria.
 bool BeginPanel(const char* name, bool* open, ImGuiWindowFlags flags, ImVec4 accent);
+// Foto de fundo da janela principal (opacidade 0..1).
+void SetBackdropPhoto(bool on, float opacity);
 void DrawBackdrop(ImDrawList* dl, ImVec2 a, ImVec2 b, ImVec4 accent, bool particles);
 
 } // namespace ui

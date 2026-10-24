@@ -125,7 +125,7 @@ std::vector<ServerInfo> DetectServers() {
 }
 
 bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>& msgs, const TokenFn& onToken,
-          std::string* err, std::atomic<bool>* cancel) {
+          std::string* err, std::atomic<bool>* cancel, const TokenFn& onThink) {
     json jm = json::array();
     for (auto& m : msgs) {
         if (m.imagesB64.empty()) { jm.push_back({{"role", m.role}, {"content", m.content}}); continue; }
@@ -162,7 +162,11 @@ bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>&
                 json j = json::parse(line, nullptr, false);
                 if (j.is_discarded()) return;
                 if (j.contains("error")) { if (err) *err = j["error"].get<std::string>(); stop = true; return; }
-                if (j.contains("message") && j["message"].contains("content")) {
+                if (j.contains("message") && j["message"].contains("thinking") && j["message"]["thinking"].is_string()) {
+                    std::string th = j["message"]["thinking"].get<std::string>();
+                    if (!th.empty() && onThink && !onThink(th)) stop = true;
+                }
+                if (j.contains("message") && j["message"].contains("content") && j["message"]["content"].is_string()) {
                     std::string piece = j["message"]["content"].get<std::string>();
                     if (!piece.empty() && !onToken(piece)) stop = true;
                 }
@@ -184,6 +188,13 @@ bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>&
                 if (j.contains("error")) { if (err) *err = j["error"].dump(); stop = true; return; }
                 if (j.contains("choices") && !j["choices"].empty()) {
                     auto& ch = j["choices"][0];
+                    if (ch.contains("delta") && onThink) {
+                        for (const char* k : {"reasoning_content", "reasoning"})
+                            if (ch["delta"].contains(k) && ch["delta"][k].is_string()) {
+                                std::string th = ch["delta"][k].get<std::string>();
+                                if (!th.empty() && !onThink(th)) stop = true;
+                            }
+                    }
                     if (ch.contains("delta") && ch["delta"].contains("content") && ch["delta"]["content"].is_string()) {
                         std::string piece = ch["delta"]["content"].get<std::string>();
                         if (!piece.empty() && !onToken(piece)) stop = true;
@@ -231,7 +242,7 @@ bool OllamaPull(const std::string& baseUrl, const std::string& model, const Pull
     return success;
 }
 
-std::string ThinkFilter::Feed(const std::string& in) {
+std::string ThinkFilter::Feed(const std::string& in, std::string* think) {
     std::string out;
     pending_ += in;
     for (;;) {
@@ -240,6 +251,7 @@ std::string ThinkFilter::Feed(const std::string& in) {
         size_t pos = pending_.find(tag);
         if (pos != std::string::npos) {
             if (!inThink_) out += pending_.substr(0, pos);
+            else if (think) *think += pending_.substr(0, pos);
             pending_.erase(0, pos + tagLen);
             inThink_ = !inThink_;
             continue;
@@ -249,6 +261,7 @@ std::string ThinkFilter::Feed(const std::string& in) {
         for (size_t k = 1; k < tagLen && k <= pending_.size(); ++k)
             if (pending_.compare(pending_.size() - k, k, tag, k) == 0) keep = k;
         if (!inThink_) out += pending_.substr(0, pending_.size() - keep);
+        else if (think) *think += pending_.substr(0, pending_.size() - keep);
         pending_.erase(0, pending_.size() - keep);
         break;
     }

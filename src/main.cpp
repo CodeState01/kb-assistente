@@ -242,7 +242,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
     // Instância única: se já estiver aberta, só mostra a janela existente.
     g_msgShow = RegisterWindowMessageW(L"KB_ASSISTENTE_MOSTRAR");
     HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\KBAssistenteInstancia");
-    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    if (GetLastError() == ERROR_ALREADY_EXISTS && GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) == 0) {
         PostMessageW(HWND_BROADCAST, g_msgShow, 0, 0);
         return 0;
     }

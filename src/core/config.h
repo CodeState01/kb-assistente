@@ -55,6 +55,12 @@ struct Config {
     int screenIntervalMs = 1000;           // intervalo da transmissão de tela
     bool autoVisionModel = true;           // troca para um modelo com visão quando há imagem
 
+    // ---- Aparência
+    bool showPerf = true;                  // CPU/GPU na barra de título
+    bool bgImage = true;                   // foto de fundo
+    float bgOpacity = 0.45f;
+    bool showThinking = true;              // mostra o raciocínio do modelo
+
     bool firstRun = true;
 };
 

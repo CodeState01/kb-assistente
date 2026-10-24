@@ -29,6 +29,7 @@ private:
     float lastRipple_ = 0.f;
     std::vector<Ripple> ripples_;
     std::vector<Particle> sparks_;
+    std::vector<ImVec2> parts_, vels_;   // partículas "KB"
     float bars_[48] = {};
     ImVec4 colA_, colB_, colC_;
     bool init_ = false;

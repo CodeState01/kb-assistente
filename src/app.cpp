@@ -159,6 +159,7 @@ void App::Init(bool startedMinimized) {
     std::string err;
     if (!mic_.Start(cfg_.micDevice, &err)) Notify(err, 2);
 
+    perf_.Start();
     voiceThread_ = std::thread([this] { VoiceLoop(); });
     llmThread_ = std::thread([this] { LlmLoop(); });
 
@@ -220,6 +221,7 @@ void App::Shutdown() {
     }
     mobile_.Stop();
     screen_.Stop();
+    perf_.Stop();
     mic_.Stop();
     tts_.reset();
     StopLocalServer();
@@ -511,6 +513,7 @@ void App::AppendToMessage(int id, const std::string& piece) {
     std::lock_guard<std::mutex> l(msgMtx_);
     for (auto it = messages_.rbegin(); it != messages_.rend(); ++it)
         if (it->id == id) {
+            it->thinkingLive = false;
             if (it->text.empty()) {
                 size_t p = 0;
                 while (p < piece.size() && (piece[p] == ' ' || piece[p] == '\n')) ++p;
@@ -523,11 +526,31 @@ void App::AppendToMessage(int id, const std::string& piece) {
     ++msgVersion_;
 }
 
+void App::AppendThinking(int id, const std::string& piece) {
+    std::lock_guard<std::mutex> l(msgMtx_);
+    for (auto it = messages_.rbegin(); it != messages_.rend(); ++it)
+        if (it->id == id) {
+            if (it->thinking.empty()) {
+                size_t p = piece.find_first_not_of(" \n\r\t");
+                if (p == std::string::npos) return;
+                it->thinking += piece.substr(p);
+                it->thinkStart = NowSeconds();
+            } else {
+                it->thinking += piece;
+            }
+            it->thinkingLive = true;
+            it->thinkSecs = NowSeconds() - it->thinkStart;
+            break;
+        }
+    ++msgVersion_;
+}
+
 void App::FinishMessage(int id, bool error, const std::string& replace) {
     std::lock_guard<std::mutex> l(msgMtx_);
     for (auto it = messages_.rbegin(); it != messages_.rend(); ++it)
         if (it->id == id) {
             it->streaming = false;
+            it->thinkingLive = false;
             it->error = error;
             if (!replace.empty()) it->text = replace;
             break;
@@ -640,9 +663,17 @@ void App::ProcessQuery(const std::string& q) {
     llm::ThinkFilter tf;
     TtsFeeder feeder(c.speakReplies ? tts_.get() : nullptr);
     bool any = false;
+    auto onThink = [&](const std::string& th) {
+        if (cancelLlm_ || quit_) return false;
+        AppendThinking(aid, th);
+        tokenPulse_ = 0.6f;
+        return true;
+    };
     bool ok = llm::Chat(c, model, msgs, [&](const std::string& piece) {
         if (cancelLlm_ || quit_) return false;
-        std::string vis = tf.Feed(piece);
+        std::string th;
+        std::string vis = tf.Feed(piece, &th);
+        if (!th.empty()) AppendThinking(aid, th);
         thinkingHidden_ = tf.Thinking();
         if (vis.empty()) return true;
         if (!any) {
@@ -655,7 +686,7 @@ void App::ProcessQuery(const std::string& q) {
         tokenPulse_ = 1.f;
         feeder.Feed(vis);
         return true;
-    }, &err, &cancelLlm_);
+    }, &err, &cancelLlm_, onThink);
     thinkingHidden_ = false;
 
     if (cancelLlm_) {
@@ -755,7 +786,7 @@ std::string App::MobileState(int since) {
         for (size_t i = start; i < messages_.size(); ++i) {
             auto& m = messages_[i];
             arr.push_back({{"id", m.id}, {"user", m.user}, {"text", m.text}, {"streaming", m.streaming}, {"error", m.error},
-                           {"img", (int)m.pictures.size()}});
+                           {"img", (int)m.pictures.size()}, {"thinking", m.thinking}});
         }
         j["messages"] = arr;
     }

@@ -44,7 +44,7 @@ std::vector<ServerInfo> DetectServers();
 
 using TokenFn = std::function<bool(const std::string& piece)>;
 bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>& msgs, const TokenFn& onToken,
-          std::string* err, std::atomic<bool>* cancel);
+          std::string* err, std::atomic<bool>* cancel, const TokenFn& onThink = nullptr);
 
 using PullFn = std::function<void(const std::string& status, uint64_t completed, uint64_t total)>;
 bool OllamaPull(const std::string& baseUrl, const std::string& model, const PullFn& onProgress, std::string* err,
@@ -53,7 +53,8 @@ bool OllamaPull(const std::string& baseUrl, const std::string& model, const Pull
 // Filtra blocos <think>...</think> de modelos de raciocínio em fluxo.
 class ThinkFilter {
 public:
-    std::string Feed(const std::string& in);
+    // Retorna o texto visível; o conteúdo de <think>...</think> vai para 'think' (se informado).
+    std::string Feed(const std::string& in, std::string* think = nullptr);
     bool Thinking() const { return inThink_; }
 private:
     bool inThink_ = false;

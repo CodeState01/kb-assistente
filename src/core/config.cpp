@@ -72,6 +72,7 @@ bool Load(Config& c) {
     GET(startWithWindows) GET(startMinimized) GET(minimizeToTray) GET(showMiniOrb) GET(greetOnStart)
     GET(hotkeyMods) GET(hotkeyVk) GET(uiScale) GET(reduceMotion) GET(miniOrbX) GET(miniOrbY) GET(firstRun)
     GET(mobileEnabled) GET(mobilePort) GET(mobileToken) GET(screenIntervalMs) GET(autoVisionModel)
+    GET(showPerf) GET(bgImage) GET(bgOpacity) GET(showThinking)
     // migração da versão "Aurora"
     size_t p = c.whisperModel.find("\\Aurora\\");
     if (p != std::string::npos) c.whisperModel.replace(p, 8, "\\KB\\");
@@ -92,6 +93,7 @@ bool Save(const Config& c) {
     PUT(startWithWindows) PUT(startMinimized) PUT(minimizeToTray) PUT(showMiniOrb) PUT(greetOnStart)
     PUT(hotkeyMods) PUT(hotkeyVk) PUT(uiScale) PUT(reduceMotion) PUT(miniOrbX) PUT(miniOrbY) PUT(firstRun)
     PUT(mobileEnabled) PUT(mobilePort) PUT(mobileToken) PUT(screenIntervalMs) PUT(autoVisionModel)
+    PUT(showPerf) PUT(bgImage) PUT(bgOpacity) PUT(showThinking)
     std::wstring tmp = text::Widen(ConfigPath() + ".tmp");
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);

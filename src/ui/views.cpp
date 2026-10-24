@@ -6,6 +6,7 @@
 #include "ui/orb.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/assets.h"
 #include "core/files.h"
 #include "media/image.h"
 #include "qrcodegen.hpp"
@@ -227,10 +228,25 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
                                 anim::Col(ImVec4(1, 1, 1, 0.0f)), anim::Col(ImVec4(1, 1, 1, 0.0f)));
     float x = a.x + px(18);
     float cy = a.y + h * 0.5f;
-    float hist[16];
-    OrbInput in = MakeOrbInput(app, g_mode, hist, 16, false, false, true);
-    g_logoOrb.Draw(dl, ImVec2(x + px(12), cy), px(10), in);
-    x += px(34);
+    {
+        // logo do app com um halo que acompanha o estado da IA
+        ImVec2 lc(x + px(14), cy);
+        float lr = px(15);
+        ImVec4 acc = g_orb.CurrentColor();
+        float active = g_mode == OrbMode::Idle ? 0.f : 1.f;
+        float glow = anim::To(ImGui::GetID("##logoGlow"), active, 4.f);
+        float pulse = 0.5f + 0.5f * std::sin(anim::Time() * 4.f);
+        orbfx::RadialGradient(dl, lc, lr * 0.8f, lr * (1.6f + 0.3f * pulse * glow), anim::Col(anim::WithAlpha(acc, 0.25f + 0.35f * glow)), anim::Col(anim::WithAlpha(acc, 0)), 32);
+        if (ImTextureID lt = assets::Logo())
+            dl->AddImageRounded(lt, ImVec2(lc.x - lr, lc.y - lr), ImVec2(lc.x + lr, lc.y + lr), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, lr);
+        else {
+            float hist[16];
+            OrbInput in = MakeOrbInput(app, g_mode, hist, 16, false, false, true);
+            g_logoOrb.Draw(dl, lc, px(10), in);
+        }
+        dl->AddCircle(lc, lr + px(1), anim::Col(anim::WithAlpha(acc, 0.4f + 0.4f * glow)), 32, px(1.2f));
+    }
+    x += px(40);
     ImGui::PushFont(theme::fonts.semibold);
     float th = ImGui::GetTextLineHeight();
     dl->AddText(ImVec2(x, cy - th * 0.5f), anim::Col(theme::Text), "KB");
@@ -264,8 +280,75 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
     float bs = px(34);
     float bx = b.x - px(12) - bs * 4 - px(12);
     g_title.height = h;
-    g_title.buttonsStartX = bx - vp->Pos.x;
-    if (hx + hs.x < bx - px(10)) {
+
+    // desempenho: CPU / GPU / VRAM com mini-gráfico
+    float leftLimit = bx - px(10);
+    if (c.showPerf) {
+        PerfSnapshot ps = app.Perf();
+        ImGui::PushFont(theme::fonts.caption);
+        struct Pill { std::string label; float value; const float* hist; ImVec4 col; };
+        std::vector<Pill> pills;
+        pills.push_back({"CPU " + std::to_string((int)(ps.cpu + 0.5f)) + "%", ps.cpu, ps.cpuHist, theme::Cyan});
+        if (ps.hasGpu) {
+            std::string g = "GPU " + std::to_string((int)(ps.gpu + 0.5f)) + "%";
+            if (ps.vramTotalGB > 0) {
+                char vb[48];
+                snprintf(vb, sizeof(vb), "  %.1f/%.0f GB", ps.vramUsedGB, ps.vramTotalGB);
+                g += vb;
+            }
+            pills.push_back({g, ps.gpu, ps.gpuHist, theme::Green});
+        }
+        float x2 = leftLimit;
+        float pillsStart = leftLimit;
+        for (int i = (int)pills.size() - 1; i >= 0; --i) {
+            auto& p = pills[i];
+            ImVec2 lts = ImGui::CalcTextSize(p.label.c_str());
+            float graphW = px(34);
+            float w2 = lts.x + graphW + px(22), h2 = lts.y + px(10);
+            ImVec2 a2(x2 - w2, cy - h2 * 0.5f), b2(x2, cy + h2 * 0.5f);
+            if (a2.x < hx + px(4)) break;
+            ImVec4 vc = p.value > 85 ? theme::Red : p.value > 60 ? theme::Amber : p.col;
+            dl->AddRectFilled(a2, b2, anim::Col(ImVec4(1, 1, 1, 0.05f)), h2 * 0.5f);
+            // barra de uso ao fundo
+            float fill = anim::To(ImGui::GetID(p.label.substr(0, 3).c_str()), p.value / 100.f, 4.f);
+            dl->AddRectFilled(a2, ImVec2(a2.x + (b2.x - a2.x) * fill, b2.y), anim::Col(anim::WithAlpha(vc, 0.10f)), h2 * 0.5f);
+            dl->AddText(ImVec2(a2.x + px(10), cy - lts.y * 0.5f), anim::Col(theme::TextDim), p.label.c_str());
+            // sparkline dos últimos 60 s
+            ImVec2 g0(b2.x - graphW - px(8), a2.y + px(5)), g1(b2.x - px(8), b2.y - px(5));
+            ImVec2 pts[PerfSnapshot::kHist];
+            for (int k = 0; k < PerfSnapshot::kHist; ++k) {
+                float v = p.hist[(ps.histPos + k) % PerfSnapshot::kHist] / 100.f;
+                pts[k] = ImVec2(g0.x + (g1.x - g0.x) * k / (PerfSnapshot::kHist - 1), g1.y - (g1.y - g0.y) * std::clamp(v, 0.f, 1.f));
+            }
+            dl->AddPolyline(pts, PerfSnapshot::kHist, anim::Col(vc), 0, px(1.4f));
+            // dica com detalhes
+            ImGui::SetCursorScreenPos(a2);
+            ImGui::PushID(i);
+            ImGui::InvisibleButton("##perf", ImVec2(w2, h2));
+            ImGui::PopID();
+            if (ImGui::IsItemHovered()) {
+                ImGui::BeginTooltip();
+                if (i == 0) {
+                    ImGui::Text("Processador: %.0f%%", ps.cpu);
+                    ImGui::Text("Memória RAM: %.1f de %.1f GB (%.0f%%)", ps.ramUsedGB, ps.ramTotalGB, ps.ram);
+                } else {
+                    ImGui::TextUnformatted(ps.gpuName.c_str());
+                    ImGui::Text("Uso: %.0f%%", ps.gpu);
+                    if (ps.vramTotalGB > 0) ImGui::Text("Memória de vídeo: %.1f de %.1f GB", ps.vramUsedGB, ps.vramTotalGB);
+                    else if (ps.vramUsedGB > 0) ImGui::Text("Memória de vídeo em uso: %.1f GB", ps.vramUsedGB);
+                    if (ps.gpuTempC >= 0) ImGui::Text("Temperatura: %d °C", ps.gpuTempC);
+                    if (ps.gpuPowerW >= 0) ImGui::Text("Consumo: %.0f W", ps.gpuPowerW);
+                }
+                ImGui::EndTooltip();
+            }
+            pillsStart = a2.x;
+            x2 = a2.x - px(8);
+        }
+        ImGui::PopFont();
+        leftLimit = pillsStart - px(10);
+    }
+    g_title.buttonsStartX = leftLimit + px(10) - vp->Pos.x;
+    if (hx + hs.x < leftLimit) {
         ImGui::PushFont(theme::fonts.caption);
         dl->AddText(ImVec2(hx, cy - hs.y * 0.5f), anim::Col(theme::TextFaint), hk.c_str());
         ImGui::PopFont();
@@ -438,6 +521,74 @@ void Suggestions(App& app) {
     }
 }
 
+// Raciocínio do modelo: bloco recolhível acima da resposta (aberto enquanto ele pensa).
+void ThinkingSection(Message& m) {
+    ImGui::PushID("think");
+    ImGuiStorage* st = ImGui::GetStateStorage();
+    ImGuiID openId = ImGui::GetID("open"), userId = ImGui::GetID("user");
+    bool userSet = st->GetBool(userId, false);
+    bool open = userSet ? st->GetBool(openId, true) : (m.thinkingLive || m.text.empty());
+    float lh = ImGui::GetTextLineHeight();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float wdt = ImGui::GetContentRegionAvail().x;
+    bool clicked = ImGui::InvisibleButton("##hdr", ImVec2(wdt, lh + px(10)));
+    bool hov = ImGui::IsItemHovered();
+    if (clicked) { st->SetBool(userId, true); st->SetBool(openId, !open); open = !open; }
+    float cy = p.y + (lh + px(10)) * 0.5f;
+    ImVec4 col = m.thinkingLive ? theme::Violet : theme::TextFaint;
+    w::DrawIcon(dl, Icon::Bulb, ImVec2(p.x + lh * 0.5f, cy), lh * 0.9f, anim::Col(col));
+    char label[96];
+    int words = 0;
+    bool inWord = false;
+    for (char ch : m.thinking) { bool sp = ch == ' ' || ch == '\n'; if (!sp && !inWord) ++words; inWord = !sp; }
+    if (m.thinkingLive) snprintf(label, sizeof(label), "Pensando…  %.0fs", m.thinkSecs);
+    else snprintf(label, sizeof(label), "Pensamento (%d palavras, %.0fs)", words, m.thinkSecs);
+    ImVec2 ls = ImGui::CalcTextSize(label);
+    ImVec2 tp(p.x + lh + px(6), cy - ls.y * 0.5f);
+    dl->AddText(tp, anim::Col(anim::Lerp(col, theme::Text, hov ? 0.4f : 0.f)), label);
+    if (m.thinkingLive) {
+        // brilho deslizante sobre o rótulo enquanto pensa
+        float sx = tp.x + std::fmod(anim::Time() * 1.2f, 1.6f) / 1.6f * (ls.x + px(60)) - px(30);
+        dl->PushClipRect(tp, ImVec2(tp.x + ls.x, tp.y + ls.y), true);
+        dl->AddRectFilledMultiColor(ImVec2(sx - px(30), tp.y), ImVec2(sx, tp.y + ls.y), IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 90),
+                                    IM_COL32(255, 255, 255, 90), IM_COL32(255, 255, 255, 0));
+        dl->AddRectFilledMultiColor(ImVec2(sx, tp.y), ImVec2(sx + px(30), tp.y + ls.y), IM_COL32(255, 255, 255, 90), IM_COL32(255, 255, 255, 0),
+                                    IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 90));
+        dl->PopClipRect();
+    }
+    // seta
+    float ax = tp.x + ls.x + px(10), ay = cy;
+    float rot = anim::To(ImGui::GetID("arrow"), open ? 1.f : 0.f, 12.f);
+    float s = px(4);
+    ImVec2 a1(ax - s, ay - s * 0.5f), a2(ax + s, ay - s * 0.5f), a3(ax, ay + s * 0.6f);
+    if (rot < 0.5f) { a1 = ImVec2(ax - s * 0.5f, ay - s); a2 = ImVec2(ax - s * 0.5f, ay + s); a3 = ImVec2(ax + s * 0.6f, ay); }
+    dl->AddTriangleFilled(a1, a2, a3, anim::Col(col));
+
+    float k = anim::To(ImGui::GetID("openAnim"), open ? 1.f : 0.f, 10.f);
+    if (k > 0.01f) {
+        ImGui::PushFont(theme::fonts.caption);
+        ImGui::PushStyleColor(ImGuiCol_Text, anim::WithAlpha(theme::TextDim, 0.9f * k));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.56f, 0.40f, 1.f, 0.06f * k));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(10));
+        float full = ImGui::CalcTextSize(m.thinking.c_str(), nullptr, false, wdt - px(28)).y + px(18);
+        float hgt = std::min(full, px(220)) * anim::EaseOutCubic(k);
+        ImGui::BeginChild("##thinkbody", ImVec2(wdt, std::max(1.f, hgt)), ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImVec2 cp = ImGui::GetWindowPos();
+        ImGui::GetWindowDrawList()->AddRectFilled(cp, ImVec2(cp.x + px(3), cp.y + ImGui::GetWindowHeight()), anim::Col(anim::WithAlpha(theme::Violet, 0.6f * k)), px(2));
+        ImGui::PushTextWrapPos(0.f);
+        ImGui::TextUnformatted(m.thinking.c_str());
+        ImGui::PopTextWrapPos();
+        if (m.thinkingLive) ImGui::SetScrollHereY(1.f); // acompanha o fim enquanto pensa
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor(2);
+        ImGui::PopFont();
+    }
+    ImGui::Spacing();
+    ImGui::PopID();
+}
+
 void MessageView(App& app, Message& m, float width) {
     (void)app;
     if (m.parsedLen != m.text.size()) {
@@ -520,6 +671,7 @@ void MessageView(App& app, Message& m, float width) {
         }
         if (onlyText) bw = std::min(maxW, widest + pad * 2 + px(24));
         if (m.streaming && m.text.empty()) bw = px(90);
+        if (g_edit.showThinking && !m.thinking.empty()) bw = maxW;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, px(11)));
         ImGui::BeginChild(id, ImVec2(bw, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -532,7 +684,11 @@ void MessageView(App& app, Message& m, float width) {
         ImVec4 bd = m.error ? ImVec4(1.f, 0.4f, 0.45f, 0.35f) : ImVec4(1, 1, 1, 0.08f);
         dl->AddRectFilled(a, b, anim::Col(bg), r, corners);
         dl->AddRect(a, b, anim::Col(bd), r, corners, px(1));
-        if (m.streaming && m.text.empty()) {
+        bool showThink = g_edit.showThinking && !m.thinking.empty();
+        if (showThink) ThinkingSection(m);
+        if (m.streaming && m.text.empty() && showThink) {
+            // ainda pensando: o bloco de pensamento já mostra a animação
+        } else if (m.streaming && m.text.empty()) {
             // os pontinhos de digitação
             ImVec2 p = ImGui::GetCursorScreenPos();
             float h = ImGui::GetTextLineHeight();
@@ -662,6 +818,15 @@ void InputBar(App& app) {
     ImGui::Dummy(ImVec2(0, 0));
 }
 
+std::string LastModelUsed(App& app) {
+    {
+        std::lock_guard<std::mutex> l(app.MessagesMutex());
+        auto& ms = app.MessagesUnsafe();
+        if (!ms.empty() && !ms.back().user && !ms.back().modelUsed.empty()) return ms.back().modelUsed;
+    }
+    return app.ActiveModel();
+}
+
 void ChatWindow(App& app) {
     ImGui::SetNextWindowSizeConstraints(ImVec2(px(360), px(380)), ImVec2(FLT_MAX, FLT_MAX));
     if (!BeginPanel(kChat, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse, g_orb.CurrentColor())) {
@@ -729,8 +894,8 @@ void ChatWindow(App& app) {
     switch (g_mode) {
     case OrbMode::Listening: cap = "Fale agora — eu paro quando você terminar"; break;
     case OrbMode::Transcribing: cap = "Transcrevendo sua fala…"; break;
-    case OrbMode::Thinking: cap = app.LiveCaption().empty() ? "Consultando " + app.ActiveModel() : "“" + app.LiveCaption() + "”"; break;
-    case OrbMode::Speaking: case OrbMode::Showing: cap = app.ActiveModel(); break;
+    case OrbMode::Thinking: cap = app.LiveCaption().empty() ? "Consultando " + LastModelUsed(app) : "“" + app.LiveCaption() + "”"; break;
+    case OrbMode::Speaking: case OrbMode::Showing: cap = LastModelUsed(app); break;
     case OrbMode::Error: cap = "Veja a mensagem abaixo"; break;
     default:
         cap = std::string("Clique no orb, pressione ") + HotkeyName(cfg.hotkeyMods, cfg.hotkeyVk) +
@@ -1217,6 +1382,14 @@ void SettingsWindow(App& app) {
     ch |= w::Toggle("Orb flutuante quando minimizada", &g_edit.showMiniOrb);
     ch |= w::Toggle("Saudação por voz ao iniciar", &g_edit.greetOnStart);
     ch |= w::Toggle("Reduzir animações", &g_edit.reduceMotion);
+    ch |= w::Toggle("Mostrar desempenho (CPU e GPU) na barra de título", &g_edit.showPerf);
+    ch |= w::Toggle("Mostrar o pensamento da IA", &g_edit.showThinking, "Modelos de raciocínio (ex.: qwen3.5, deepseek-r1) mostram como chegaram à resposta.");
+    ch |= w::Toggle("Foto de fundo", &g_edit.bgImage);
+    if (g_edit.bgImage) {
+        ImGui::SetNextItemWidth(-1);
+        ImGui::SliderFloat("##bgop", &g_edit.bgOpacity, 0.1f, 1.f, "Intensidade da foto: %.2f", ImGuiSliderFlags_None);
+        if (ImGui::IsItemDeactivatedAfterEdit()) ch = true;
+    }
     Label("Atalho global para falar");
     int cur = -1;
     for (int i = 0; i < (int)std::size(kHotkeys); ++i)
@@ -1435,6 +1608,7 @@ void Toasts(App& app) {
 
 void Init(App& app, float scale) {
     theme::Load(scale);
+    assets::Load();
     g_edit = app.Cfg();
 }
 
@@ -1460,6 +1634,7 @@ void Frame(App& app, bool mainVisible) {
     CollectTextures();
     Config cfg = app.Cfg();
     anim::SetReduceMotion(cfg.reduceMotion);
+    SetBackdropPhoto(cfg.bgImage, ImGui::IsAnyItemActive() ? g_edit.bgOpacity : cfg.bgOpacity);
     if (!ImGui::IsAnyItemActive()) g_edit = cfg;
     g_mode = g_debugMode >= 0 ? (OrbMode)g_debugMode : ComputeMode(app);
 

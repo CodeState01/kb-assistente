@@ -2,10 +2,13 @@
 GLFW_ICON ICON "kb.ico"
 // Página do app para celular (servida pelo KB na rede local).
 MOBILE_HTML RCDATA "mobile.html"
+// Foto de fundo e logo (também é o molde das partículas "KB").
+BG_JPG RCDATA "bg.jpg"
+LOGO_PNG RCDATA "logo.png"
 
 1 VERSIONINFO
-FILEVERSION 1,1,0,0
-PRODUCTVERSION 1,1,0,0
+FILEVERSION 1,2,0,0
+PRODUCTVERSION 1,2,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -13,9 +16,9 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "KB"
       VALUE "FileDescription", "KB - Assistente de voz local"
-      VALUE "FileVersion", "1.1.0"
+      VALUE "FileVersion", "1.2.0"
       VALUE "ProductName", "KB"
-      VALUE "ProductVersion", "1.1.0"
+      VALUE "ProductVersion", "1.2.0"
     END
   END
   BLOCK "VarFileInfo"

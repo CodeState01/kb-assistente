@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(KB VERSION 1.1.0 LANGUAGES C CXX)
+project(KB VERSION 1.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -102,21 +102,23 @@ add_executable(KB WIN32
   src/ui/embeds.cpp
   src/ui/blocks.cpp
   src/ui/views.cpp
+  src/ui/assets.cpp
+  src/core/perf.cpp
   third_party/qrcodegen.cpp
   res/kb.rc)
 target_include_directories(KB PRIVATE src third_party ${miniaudio_SOURCE_DIR})
 target_compile_definitions(KB PRIVATE ${KB_DEFS})
 target_compile_options(KB PRIVATE ${KB_OPTS})
-set_source_files_properties(res/kb.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/res/mobile.html;${CMAKE_SOURCE_DIR}/res/kb.ico")
+set_source_files_properties(res/kb.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/res/mobile.html;${CMAKE_SOURCE_DIR}/res/kb.ico;${CMAKE_SOURCE_DIR}/res/bg.jpg;${CMAKE_SOURCE_DIR}/res/logo.png")
 target_link_libraries(KB PRIVATE
   imgui whisper nlohmann_json::nlohmann_json
   winhttp sapi ole32 oleaut32 dwmapi shell32 winmm advapi32 user32 gdi32 comdlg32
-  d3d11 dxgi ws2_32 iphlpapi bcrypt uuid)
+  d3d11 dxgi ws2_32 iphlpapi bcrypt uuid pdh)
 set_target_properties(KB PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ---------------------------------------------------------------- KB-Setup (instalador com o KB.exe embutido)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/setup_payload.rc
-     CONTENT "GLFW_ICON ICON \"${CMAKE_SOURCE_DIR}/res/kb.ico\"\nKB_EXE RCDATA \"$<TARGET_FILE:KB>\"\n")
+     CONTENT "GLFW_ICON ICON \"${CMAKE_SOURCE_DIR}/res/kb.ico\"\nKB_EXE RCDATA \"$<TARGET_FILE:KB>\"\nLOGO_PNG RCDATA \"${CMAKE_SOURCE_DIR}/res/logo.png\"\n")
 add_executable(KBSetup WIN32
   src/setup/setup_main.cpp
   src/core/install.cpp
@@ -128,10 +130,12 @@ add_executable(KBSetup WIN32
   src/ui/anim.cpp
   src/ui/widgets.cpp
   src/ui/orb.cpp
+  src/ui/assets.cpp
+  src/media/image.cpp
   ${CMAKE_BINARY_DIR}/setup_payload.rc)
 add_dependencies(KBSetup KB)
 set_source_files_properties(${CMAKE_BINARY_DIR}/setup_payload.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_BINARY_DIR}/bin/KB.exe")
-target_include_directories(KBSetup PRIVATE src)
+target_include_directories(KBSetup PRIVATE src third_party)
 target_compile_definitions(KBSetup PRIVATE ${KB_DEFS})
 target_compile_options(KBSetup PRIVATE ${KB_OPTS})
 target_link_libraries(KBSetup PRIVATE imgui nlohmann_json::nlohmann_json winhttp ole32 shell32 dwmapi advapi32 user32 gdi32 comdlg32 uuid)

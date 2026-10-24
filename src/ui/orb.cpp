@@ -1,6 +1,7 @@
 #include "ui/orb.h"
 #include "ui/anim.h"
 #include "ui/theme.h"
+#include "ui/assets.h"
 #include "imgui_internal.h"
 #include <algorithm>
 #include <cmath>
@@ -256,6 +257,9 @@ void Orb::Draw(ImDrawList* dl, ImVec2 c, float R, const OrbInput& in) {
     float amp = 0.022f + 0.015f * std::sin(t * 1.3f) * wIdle + 0.14f * wL * level_ + 0.17f * wS * speech_ + 0.05f * thinkW +
                 0.04f * wSh + 0.03f * hover_ + 0.06f * wE * std::fabs(std::sin(t * 9.f));
     amp *= motion;
+    // ao responder, o núcleo se desfaz em partículas que formam "KB"
+    const bool hasShape = !assets::KbShape().empty();
+    const float coreA = hasShape ? 1.f - 0.97f * wS : 1.f;
     for (int L = 0; L < 3; ++L) {
         float rl = Rb * (L == 0 ? 1.f : 0.80f - 0.08f * L);
         float ph = L * 2.1f;
@@ -273,20 +277,22 @@ void Orb::Draw(ImDrawList* dl, ImVec2 c, float R, const OrbInput& in) {
             // núcleo mais escuro e borda brilhante (efeito "fresnel")
             cin = Col(Mix(Mix(C, B, 0.5f), theme::Bg, 0.45f));
             cout = Col(Mix(A, ImVec4(1, 1, 1, 1), 0.25f));
+            cin = Col(Mix(Mix(C, B, 0.5f), theme::Bg, 0.45f), coreA);
+            cout = Col(Mix(A, ImVec4(1, 1, 1, 1), 0.25f), coreA);
             orbfx::FillStar(dl, c, pts, NP, cin, cout);
         } else if (L == 1) {
-            cin = Col(WithAlpha(Mix(A, ImVec4(1, 1, 1, 1), 0.15f), 0.85f));
+            cin = Col(WithAlpha(Mix(A, ImVec4(1, 1, 1, 1), 0.15f), 0.85f * coreA));
             cout = Col(WithAlpha(B, 0.0f));
             orbfx::FillStar(dl, cc, pts, NP, cin, cout);
         } else {
-            cin = Col(WithAlpha(Mix(B, theme::Pink, 0.35f), 0.75f));
+            cin = Col(WithAlpha(Mix(B, theme::Pink, 0.35f), 0.75f * coreA));
             cout = Col(WithAlpha(C, 0.0f));
             orbfx::FillStar(dl, cc, pts, NP, cin, cout);
         }
     }
 
     // ondas de voz dentro do orb
-    float waveAmp = wS * (0.15f + speech_) + wL * level_ * 0.9f;
+    float waveAmp = wS * (0.15f + speech_) * (hasShape ? 0.f : 1.f) + wL * level_ * 0.9f;
     if (waveAmp > 0.01f) {
         const int WN = 48;
         ImVec2 wp[WN];
@@ -305,7 +311,44 @@ void Orb::Draw(ImDrawList* dl, ImVec2 c, float R, const OrbInput& in) {
         }
     }
 
+    // ---- 7. partículas "KB" (resposta)
+    if (hasShape && (wS > 0.005f || !parts_.empty())) {
+        const auto& shape = assets::KbShape();
+        int N = std::min<int>((int)shape.size(), in.compact ? 360 : 1200);
+        if ((int)parts_.size() != N) { parts_.assign(N, ImVec2(0, 0)); vels_.assign(N, ImVec2(0, 0)); }
+        float form = anim::EaseInOutCubic(wS);
+        float pulse = 1.f + 0.05f * speech_;
+        float k = 60.f, damp = std::exp(-dt * 9.f);
+        for (int i = 0; i < N; ++i) {
+            float h1 = std::fabs(anim::Noise(i * 1.731f + 0.3f)), h2 = std::fabs(anim::Noise(i * 3.117f + 7.1f)), h3 = std::fabs(anim::Noise(i * 0.913f + 2.2f));
+            float ang = h1 * TAU * 3.f + t * (0.25f + 0.5f * h2) * motion;
+            float rad = std::sqrt(std::min(1.f, h3 * 1.6f)) * Rb * 0.92f;
+            ImVec2 home(std::cos(ang) * rad, std::sin(ang) * rad);
+            ImVec2 tg(shape[i].x * Rb * 1.05f * pulse, shape[i].y * Rb * 1.05f * pulse);
+            float j = Rb * 0.02f * (0.4f + 1.6f * speech_) * motion;
+            tg.x += anim::Noise(i * 0.37f + t * 3.f) * j;
+            tg.y += anim::Noise(i * 0.53f + t * 3.f + 9.f) * j;
+            // pequeno atraso por partícula: o "KB" se monta em onda
+            float fi = anim::Clamp01(form * 1.25f - h1 * 0.25f);
+            ImVec2 goal(home.x + (tg.x - home.x) * fi, home.y + (tg.y - home.y) * fi);
+            ImVec2& p = parts_[i];
+            ImVec2& v = vels_[i];
+            v.x = (v.x + (goal.x - p.x) * k * dt) * damp;
+            v.y = (v.y + (goal.y - p.y) * k * dt) * damp;
+            p.x += v.x * dt;
+            p.y += v.y * dt;
+            float alpha = anim::Smoothstep(0.f, 0.25f, wS);
+            if (alpha < 0.01f) continue;
+            ImVec2 sp(c.x + p.x, c.y + p.y);
+            float sz = R * (0.009f + 0.008f * h2) * (0.7f + 0.3f * fi);
+            ImVec4 pc = Mix(Mix(theme::Cyan, A, h2), ImVec4(1, 1, 1, 1), 0.25f * h3);
+            dl->AddCircleFilled(sp, sz * 2.6f, Col(WithAlpha(pc, 0.10f * alpha)), 10);
+            dl->AddCircleFilled(sp, sz, Col(WithAlpha(pc, (0.55f + 0.45f * h3) * alpha)), 8);
+        }
+        if (wS < 0.005f) parts_.clear();
+    }
+
     // reflexo de vidro + aro
-    orbfx::RadialGradient(dl, ImVec2(c.x - Rb * 0.32f, c.y - Rb * 0.38f), 0, Rb * 0.55f, Col(ImVec4(1, 1, 1, 0.30f + 0.1f * hover_)), Col(ImVec4(1, 1, 1, 0)), 40);
-    dl->AddCircle(c, Rb * 0.995f, Col(ImVec4(1, 1, 1, 0.10f + 0.1f * hover_)), 96, std::max(1.f, R * 0.012f));
+    orbfx::RadialGradient(dl, ImVec2(c.x - Rb * 0.32f, c.y - Rb * 0.38f), 0, Rb * 0.55f, Col(ImVec4(1, 1, 1, (0.30f + 0.1f * hover_) * coreA)), Col(ImVec4(1, 1, 1, 0)), 40);
+    dl->AddCircle(c, Rb * 0.995f, Col(ImVec4(1, 1, 1, (0.10f + 0.1f * hover_) * coreA)), 96, std::max(1.f, R * 0.012f));
 }

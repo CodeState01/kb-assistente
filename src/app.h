@@ -10,6 +10,7 @@
 #include "media/image.h"
 #include "media/screen.h"
 #include "net/mobile_server.h"
+#include "core/perf.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -32,6 +33,9 @@ struct Message {
     std::string text;
     std::vector<PicturePtr> pictures;  // imagens anexadas (fotos, prints da tela)
     std::string modelUsed;             // modelo que respondeu (ex.: troca automática para visão)
+    std::string thinking;              // raciocínio do modelo (quando ele mostra)
+    bool thinkingLive = false;         // ainda pensando
+    double thinkStart = 0, thinkSecs = 0;
     double time = 0;
     // Cache da interface
     float appear = 0.f;
@@ -144,6 +148,9 @@ public:
     bool ModelHasVision(const std::string& name);
     std::string BestVisionModel();      // maior modelo instalado com visão (vazio = nenhum)
 
+    // ---- Desempenho
+    PerfSnapshot Perf() { return perf_.Get(); }
+
     // ---- Celular
     bool MobileRunning() const { return mobile_.Running(); }
     std::string MobileUrl();            // http://ip:porta/?t=token
@@ -215,6 +222,8 @@ private:
     std::atomic<bool> modelsLoading_{false}, detecting_{false}, scanning_{false}, backendOnline_{false};
     double lastOllamaLaunch_ = -100;
     ScreenShare screen_;
+    PerfMonitor perf_;
+    void AppendThinking(int id, const std::string& piece);
     MobileServer mobile_;
     std::string MobileState(int since);
 

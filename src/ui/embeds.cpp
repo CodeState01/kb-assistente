@@ -3,6 +3,7 @@
 #include "ui/orb.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/assets.h"
 #include "core/platform.h"
 #include "core/text.h"
 #include "core/files.h"
@@ -516,10 +517,34 @@ bool BeginPanel(const char* name, bool* open, ImGuiWindowFlags flags, ImVec4 acc
     return vis;
 }
 
+static bool g_photoOn = true;
+static float g_photoOpacity = 0.45f;
+void SetBackdropPhoto(bool on, float opacity) { g_photoOn = on; g_photoOpacity = opacity; }
+
 void DrawBackdrop(ImDrawList* dl, ImVec2 a, ImVec2 b, ImVec4 accent, bool particles) {
     float t = anim::Time() * (anim::ReduceMotion() ? 0.2f : 1.f);
     ImU32 top = anim::Col(theme::Bg), bot = anim::Col(theme::Bg2);
     dl->AddRectFilledMultiColor(a, b, top, top, bot, bot);
+    int iw = 0, ih = 0;
+    ImTextureID photo = assets::Background(&iw, &ih);
+    if (particles && g_photoOn && photo && iw > 0 && ih > 0) {
+        // foto ocupa a altura toda, um pouco à direita do centro, com bordas que se dissolvem no fundo
+        float H = b.y - a.y, W = H * iw / (float)ih;
+        float breathe = 1.f + 0.012f * std::sin(t * 0.25f);
+        H *= breathe; W *= breathe;
+        float cx = a.x + (b.x - a.x) * 0.58f, top0 = a.y + ((b.y - a.y) - H) * 0.5f;
+        ImVec2 p0(cx - W * 0.5f, top0), p1(cx + W * 0.5f, top0 + H);
+        float op = std::clamp(g_photoOpacity, 0.f, 1.f);
+        dl->AddImage(photo, p0, p1, ImVec2(0, 0), ImVec2(1, 1), ImGui::GetColorU32(ImVec4(1, 1, 1, op)));
+        ImU32 solid = anim::Col(theme::Bg), clear = anim::Col(theme::Bg, 0.f);
+        float fw = W * 0.28f;
+        dl->AddRectFilledMultiColor(p0, ImVec2(p0.x + fw, p1.y), solid, clear, clear, solid);
+        dl->AddRectFilledMultiColor(ImVec2(p1.x - fw, p0.y), p1, clear, solid, solid, clear);
+        dl->AddRectFilled(a, ImVec2(p0.x + 1, b.y), solid);
+        dl->AddRectFilled(ImVec2(p1.x - 1, a.y), b, solid);
+        // vinheta para manter o texto legível
+        dl->AddRectFilledMultiColor(ImVec2(a.x, b.y - (b.y - a.y) * 0.35f), b, clear, clear, anim::Col(theme::Bg2, 0.85f), anim::Col(theme::Bg2, 0.85f));
+    }
     float wdt = b.x - a.x, hgt = b.y - a.y, m = std::max(wdt, hgt);
     struct Blob { float x, y, r, sx, sy; ImVec4 c; float alpha; };
     Blob blobs[] = {

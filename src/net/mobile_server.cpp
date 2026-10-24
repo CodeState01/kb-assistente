@@ -142,6 +142,10 @@ void MobileServer::Handle(uintptr_t sockp) {
     }
 
     // Arquivos públicos (sem dados): ícone e manifesto
+    if (path == "/logo.png") {
+        static const std::string logo = LoadResource(L"LOGO_PNG");
+        if (!logo.empty()) { Reply(s, 200, "image/png", logo); return; }
+    }
     if (path == "/icon.svg") {
         Reply(s, 200, "image/svg+xml",
               "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><defs><radialGradient id='g' cx='40%' cy='35%' r='70%'>"

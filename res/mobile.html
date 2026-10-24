@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="KB">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/logo.png">
 <link rel="icon" href="/icon.svg">
 <title>KB</title>
 <style>
@@ -131,7 +131,8 @@ async function poll(){
       for(const m of d.messages){let el=known[m.id];
         if(!el){el=document.createElement('div');el.className='m '+(m.user?'u':'k');known[m.id]=el;box.append(el)}
         el.classList.toggle('err',!!m.error);
-        el.innerHTML=(m.img?'🖼️ ':'')+(m.text?render(m.text):(m.streaming?'<span class="dots"><span></span><span></span><span></span></span>':''));
+        const th=m.thinking?`<details style="margin-bottom:6px;color:var(--faint);font-size:13px"${m.text?'':' open'}><summary>💭 Pensamento</summary>${esc(m.thinking)}</details>`:'';
+        el.innerHTML=th+(m.img?'🖼️ ':'')+(m.text?render(m.text):(m.streaming?'<span class="dots"><span></span><span></span><span></span></span>':''));
         if(!m.user&&!m.streaming&&m.text)speakText(m.id,m.text);
       }
       box.scrollTop=box.scrollHeight}

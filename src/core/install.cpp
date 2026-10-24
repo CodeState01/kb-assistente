@@ -104,7 +104,7 @@ void Uninstall(bool removeUserData) {
     PROCESS_INFORMATION pi{};
     wchar_t tmp[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);
-    if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, tmp, &si, &pi)) {
+    if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, tmp, &si, &pi)) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     }

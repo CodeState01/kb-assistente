@@ -319,6 +319,23 @@ void App::SendText(const std::string& t, bool fromVoice, std::vector<PicturePtr>
     AssistState s = state_.load();
     if (s == AssistState::Thinking || s == AssistState::Speaking) Interrupt();
     AddMessage(true, q, false, fromVoice);
+    // Comando local: abrir / iniciar o timer de rounds
+    {
+        std::string f = text::Fold(q);
+        bool timerWord = f.find("timer") != std::string::npos || f.find("cronometro") != std::string::npos ||
+                         f.find("round") != std::string::npos && (f.find("inicia") != std::string::npos || f.find("comeca") != std::string::npos);
+        if (timerWord && pics.empty() && f.size() < 80) {
+            bool start = f.find("inici") != std::string::npos || f.find("comec") != std::string::npos || f.find("liga") != std::string::npos ||
+                         f.find("start") != std::string::npos || f.find("bora") != std::string::npos;
+            requestTimer = start ? 2 : 1;
+            std::string reply = start ? "Timer iniciado. Bom treino!" : "Abri o timer de rounds. É só apertar Iniciar quando quiser.";
+            int id = AddMessage(false, reply, false);
+            (void)id;
+            if (Cfg().speakReplies) Say(reply);
+            if (state_ == AssistState::Thinking || state_ == AssistState::Transcribing) SetState(AssistState::Idle);
+            return;
+        }
+    }
     if (!pics.empty()) {
         std::lock_guard<std::mutex> l(msgMtx_);
         messages_.back().pictures = std::move(pics);

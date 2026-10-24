@@ -9,4 +9,6 @@ ImTextureID Background(int* w, int* h);       // 0 se não houver
 ImTextureID Logo();
 // Pontos (normalizados em [-1,1], proporção preservada) que desenham as letras "KB" da logo.
 const std::vector<ImVec2>& KbShape();
+// Quanto as letras ocupam da logo (para alinhar partículas e imagem).
+float KbShapeLogoRatio();
 }

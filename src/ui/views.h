@@ -25,6 +25,7 @@ void Frame(App& app, bool mainVisible);
 WindowRequests& Requests();
 TitleBarInfo GetTitleBar();
 bool WantsContinuousRender();
+bool TimerRunning();
 const char* HotkeyName(int mods, int vk);
 void SetDebugMode(int mode); // -1 = normal
 void SetFullscreen(bool on);

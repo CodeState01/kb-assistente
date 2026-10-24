@@ -204,3 +204,48 @@ void SetTopMost(void* hwnd, bool topmost) {
 }
 
 } // namespace platform
+
+namespace platform {
+
+static const wchar_t* kFwRule = L"KB - Celular";
+
+static DWORD RunHidden(const std::wstring& cmdline, DWORD timeoutMs) {
+    std::vector<wchar_t> buf(cmdline.begin(), cmdline.end());
+    buf.push_back(0);
+    STARTUPINFOW si{sizeof(si)};
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) return (DWORD)-1;
+    WaitForSingleObject(pi.hProcess, timeoutMs);
+    DWORD code = (DWORD)-1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return code;
+}
+
+bool FirewallRuleExists() {
+    return RunHidden(std::wstring(L"netsh.exe advfirewall firewall show rule name=\"") + kFwRule + L"\"", 5000) == 0;
+}
+
+bool AddFirewallRuleElevated(int port, const std::string& exePath) {
+    std::wstring exe = text::Widen(exePath.empty() ? ExePath() : exePath);
+    std::wstring args = std::wstring(L"advfirewall firewall add rule name=\"") + kFwRule +
+                        L"\" dir=in action=allow protocol=TCP localport=" + std::to_wstring(port) +
+                        L" program=\"" + exe + L"\" profile=any enable=yes";
+    SHELLEXECUTEINFOW sei{sizeof(sei)};
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = L"runas"; // o Windows mostra a confirmação de administrador
+    sei.lpFile = L"netsh.exe";
+    sei.lpParameters = args.c_str();
+    sei.nShow = SW_HIDE;
+    if (!ShellExecuteExW(&sei) || !sei.hProcess) return false; // usuário recusou
+    WaitForSingleObject(sei.hProcess, 15000);
+    DWORD code = 1;
+    GetExitCodeProcess(sei.hProcess, &code);
+    CloseHandle(sei.hProcess);
+    return code == 0;
+}
+
+} // namespace platform

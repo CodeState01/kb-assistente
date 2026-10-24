@@ -161,6 +161,10 @@ public:
     bool OllamaInstalled() { return !platform::FindOllama().empty(); }
     bool EnsureOllama(bool wait);       // inicia o servidor do Ollama se estiver instalado e parado
 
+    // ---- Fala direta (timer etc.)
+    void Say(const std::string& text) { if (tts_ && !silent_) tts_->Speak(text); }
+    std::atomic<int> requestTimer{0};   // 1 = abrir o painel, 2 = abrir e iniciar
+
     // ---- Janela
     std::atomic<bool> requestShowMain{false};
     std::atomic<bool> requestQuit{false};

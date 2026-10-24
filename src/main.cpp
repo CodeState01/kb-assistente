@@ -333,7 +333,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
         bool visible = glfwGetWindowAttrib(g_win, GLFW_VISIBLE) && !glfwGetWindowAttrib(g_win, GLFW_ICONIFIED);
         Config c = app.Cfg();
         bool needFrames = visible || c.showMiniOrb || app.State() != AssistState::Idle || app.TtsSpeaking() ||
-                          ImGui::GetPlatformIO().Viewports.Size > 1;
+                          ImGui::GetPlatformIO().Viewports.Size > 1 || ui::TimerRunning();
         if (needFrames) glfwPollEvents();
         else glfwWaitEventsTimeout(0.25);
 

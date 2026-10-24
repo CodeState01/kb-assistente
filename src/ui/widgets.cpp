@@ -188,6 +188,12 @@ void DrawIcon(ImDrawList* dl, Icon icon, ImVec2 c, float s, ImU32 col, float t) 
             }
         break;
     }
+    case Icon::Clock:
+        dl->AddCircle(V(c, s, 0, 0.04f), s * 0.33f, col, 24, t);
+        dl->AddLine(V(c, s, 0, 0.04f), V(c, s, 0, -0.16f), col, t);
+        dl->AddLine(V(c, s, 0, 0.04f), V(c, s, 0.14f, 0.12f), col, t);
+        dl->AddLine(V(c, s, -0.1f, -0.4f), V(c, s, 0.1f, -0.4f), col, t * 1.2f);
+        break;
     case Icon::File:
         dl->PathLineTo(V(c, s, -0.26f, -0.36f));
         dl->PathLineTo(V(c, s, 0.1f, -0.36f));

@@ -46,7 +46,7 @@ float g_scale = 1.f;
 int g_page = 0;                   // 0 boas-vindas, 1 instalando, 2 pronto
 std::atomic<bool> g_working{false}, g_failed{false};
 std::vector<std::unique_ptr<Step>> g_steps;
-bool optDesktop = true, optAutostart = true, optWhisper = true, optOllama = true;
+bool optDesktop = true, optAutostart = true, optWhisper = true, optOllama = true, optFirewall = true;
 bool ollamaInstalled = false, whisperPresent = false;
 install::DeviceInfo g_dev;
 Orb g_orb;
@@ -137,6 +137,13 @@ void RunInstall() {
     }
     CoUninitialize();
     st[1]->Set(2, optAutostart ? "Menu Iniciar, área de trabalho e inicialização com o Windows" : "Menu Iniciar e área de trabalho");
+
+    // 2b. celular: regra no Firewall (o Windows pede confirmação de administrador)
+    if (optFirewall && !platform::FirewallRuleExists()) {
+        st[1]->Set(1, "Liberando o celular no Firewall (confirme na janela do Windows)…");
+        bool ok = platform::AddFirewallRuleElevated(7777, text::Narrow(install::InstalledExe()));
+        st[1]->Set(2, ok ? "Atalhos criados e celular liberado no Firewall" : "Atalhos criados (Firewall não liberado: dá para fazer depois em Configurações > Celular)");
+    }
 
     // 3. modelo de voz
     if (optWhisper && !whisperPresent) {
@@ -296,6 +303,7 @@ void Frame() {
         ImGui::Spacing();
         w::Toggle("Atalho na área de trabalho", &optDesktop);
         w::Toggle("Iniciar com o Windows (minimizado)", &optAutostart);
+        w::Toggle("Permitir usar pelo celular (libera no Firewall)", &optFirewall, "O Windows vai pedir confirmação de administrador uma vez.");
         if (whisperPresent) { bool f = false; ImGui::BeginDisabled(); w::Toggle("Modelo de voz (já instalado)", &f); ImGui::EndDisabled(); }
         else w::Toggle("Baixar reconhecimento de voz em português (466 MB)", &optWhisper);
         if (ollamaInstalled) { bool f = false; ImGui::BeginDisabled(); w::Toggle("Ollama (já instalado)", &f); ImGui::EndDisabled(); }
@@ -346,7 +354,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
 
     // Modo silencioso: KB-Setup.exe /S
     if (cmdLine && (wcsstr(cmdLine, L"/S") || wcsstr(cmdLine, L"--silencioso"))) {
-        optWhisper = optOllama = false;
+        optWhisper = optOllama = optFirewall = false;
         RunInstall();
         return g_failed ? 1 : 0;
     }

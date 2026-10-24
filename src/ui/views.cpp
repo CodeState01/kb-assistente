@@ -7,6 +7,7 @@
 #include "ui/theme.h"
 #include "ui/widgets.h"
 #include "ui/assets.h"
+#include "ui/timer.h"
 #include "core/files.h"
 #include "media/image.h"
 #include "qrcodegen.hpp"
@@ -30,7 +31,8 @@ TitleBarInfo g_title;
 OrbMode g_mode = OrbMode::Idle;
 char g_input[4096] = "";
 bool g_inputFocused = false;
-bool g_showEmbeds = true, g_showModels = true, g_showSettings = true;
+bool g_showEmbeds = true, g_showModels = true, g_showSettings = true, g_showTimer = false;
+float g_splashT = -1.f;   // animação de abertura (-1 = ainda não começou)
 int g_sel = 0;
 const char* g_focusNext = nullptr;
 bool g_stickBottom = true;
@@ -283,6 +285,22 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
 
     // desempenho: CPU / GPU / VRAM com mini-gráfico
     float leftLimit = bx - px(10);
+    // timer em andamento
+    if (const char* tb = timer::Badge(); tb && tb[0]) {
+        ImGui::PushFont(theme::fonts.semibold);
+        ImVec2 ts2 = ImGui::CalcTextSize(tb);
+        float w2 = ts2.x + px(40), h2 = ts2.y + px(10);
+        ImVec2 a2(leftLimit - w2, cy - h2 * 0.5f), b2(leftLimit, cy + h2 * 0.5f);
+        float pulse = timer::Running() ? 0.5f + 0.5f * std::sin(anim::Time() * 3.f) : 0.f;
+        dl->AddRectFilled(a2, b2, anim::Col(anim::WithAlpha(theme::Red, 0.16f + 0.08f * pulse)), h2 * 0.5f);
+        dl->AddRect(a2, b2, anim::Col(anim::WithAlpha(theme::Red, 0.5f)), h2 * 0.5f, 0, px(1));
+        w::DrawIcon(dl, Icon::Clock, ImVec2(a2.x + px(16), cy), ts2.y, anim::Col(theme::Text));
+        dl->AddText(ImVec2(a2.x + px(28), cy - ts2.y * 0.5f), anim::Col(theme::Text), tb);
+        ImGui::PopFont();
+        ImGui::SetCursorScreenPos(a2);
+        if (ImGui::InvisibleButton("##timerbadge", ImVec2(w2, h2))) { g_showTimer = true; g_focusNext = "Timer###timer"; }
+        leftLimit = a2.x - px(8);
+    }
     if (c.showPerf) {
         PerfSnapshot ps = app.Perf();
         ImGui::PushFont(theme::fonts.caption);
@@ -378,6 +396,7 @@ void Sidebar(App& app, ImGuiViewport* vp, float top, float wdt) {
         {Icon::Grid, "Embeds (itens mostrados)", kEmbeds, &g_showEmbeds},
         {Icon::Cpu, "Modelos de IA e voz", kModels, &g_showModels},
         {Icon::Gear, "Configurações", kSettings, &g_showSettings},
+        {Icon::Clock, "Timer de rounds (Muay Thai)", "Timer###timer", &g_showTimer},
     };
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float bs = px(44);
@@ -387,7 +406,7 @@ void Sidebar(App& app, ImGuiViewport* vp, float top, float wdt) {
     float iy = anim::Spring(ImGui::GetID("##sideind"), y0 + g_sel * step, 200.f, 20.f);
     dl->AddRectFilled(ImVec2(vp->Pos.x + px(4), iy + px(9)), ImVec2(vp->Pos.x + px(7), iy + bs - px(9)), anim::Col(theme::Cyan), px(2));
     orbfx::RadialGradient(dl, ImVec2(vp->Pos.x + px(6), iy + bs * 0.5f), 0, px(22), anim::Col(anim::WithAlpha(theme::Cyan, 0.25f)), anim::Col(anim::WithAlpha(theme::Cyan, 0)), 24);
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < (int)std::size(items); ++i) {
         ImGui::SetCursorScreenPos(ImVec2(x, y0 + i * step));
         ImGui::PushID(i);
         if (w::IconButton("side", items[i].icon, bs, items[i].tip, g_sel == i, theme::Cyan, false)) {
@@ -1349,6 +1368,25 @@ void MobileSection(App& app, bool& ch) {
     ch |= w::Toggle("Permitir acesso pelo celular", &g_edit.mobileEnabled,
                     "Abre um servidor só na sua rede local, protegido por um código secreto no QR code.");
     if (!app.MobileRunning()) return;
+    static int fwState = -1;          // -1 não verificado, 0 bloqueado, 1 liberado
+    static double fwChecked = -100;
+    if (fwState != 1 && NowSeconds() - fwChecked > 10) { fwState = platform::FirewallRuleExists() ? 1 : 0; fwChecked = NowSeconds(); }
+    if (fwState == 0) {
+        w::BeginCard("##fw", theme::Amber);
+        ImGui::PushFont(theme::fonts.semibold);
+        ImGui::TextWrapped("O Firewall do Windows está bloqueando o celular");
+        ImGui::PopFont();
+        w::Hint("Sua rede Wi-Fi está como \"Pública\", então o Windows bloqueia conexões vindas do celular. "
+                "Clique abaixo e confirme na janela de administrador para liberar só o KB, só na porta %d.", g_edit.mobilePort);
+        if (w::PrimaryButton("Liberar no Firewall", ImVec2(0, 0), Icon::Check)) {
+            bool ok = platform::AddFirewallRuleElevated(g_edit.mobilePort);
+            fwState = ok || platform::FirewallRuleExists() ? 1 : 0;
+            fwChecked = NowSeconds();
+            app.Notify(fwState == 1 ? "Pronto! O celular já pode abrir o KB." : "O Firewall não foi liberado.", fwState == 1 ? 1 : 2);
+        }
+        w::EndCard();
+        ImGui::Spacing();
+    }
     std::string url = app.MobileUrl();
     float qs = std::min(px(220), ImGui::GetContentRegionAvail().x);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - qs) * 0.5f);
@@ -1384,6 +1422,7 @@ void SettingsWindow(App& app) {
     ch |= w::Toggle("Reduzir animações", &g_edit.reduceMotion);
     ch |= w::Toggle("Mostrar desempenho (CPU e GPU) na barra de título", &g_edit.showPerf);
     ch |= w::Toggle("Mostrar o pensamento da IA", &g_edit.showThinking, "Modelos de raciocínio (ex.: qwen3.5, deepseek-r1) mostram como chegaram à resposta.");
+    ch |= w::Toggle("Animação de abertura", &g_edit.splash);
     ch |= w::Toggle("Foto de fundo", &g_edit.bgImage);
     if (g_edit.bgImage) {
         ImGui::SetNextItemWidth(-1);
@@ -1604,6 +1643,74 @@ void Toasts(App& app) {
     }
     ImGui::PopFont();
 }
+// ------------------------------------------------------------------ Animação de abertura
+// Partículas vêm das bordas, formam o "KB" da logo, a logo surge com um anel de luz e tudo se dissolve na interface.
+void Splash(ImGuiViewport* vp) {
+    const float total = 2.9f;
+    if (g_splashT < 0) g_splashT = 0;
+    g_splashT += anim::Dt();
+    if (ImGui::IsMouseClicked(0) || ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_Space))
+        g_splashT = std::max(g_splashT, total - 0.45f); // clique pula
+    float t = g_splashT;
+    if (const char* ft = getenv("KB_SPLASH_T")) t = (float)atof(ft); // diagnóstico: congela um instante
+    if (t >= total) return;
+    ImDrawList* dl = ImGui::GetForegroundDrawList(vp);
+    ImVec2 a = vp->Pos, b(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y);
+    ImVec2 c((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f - vp->Size.y * 0.04f);
+    float fadeOut = 1.f - anim::Smoothstep(total - 0.6f, total, t);
+    float zoom = 1.f + 0.18f * anim::Smoothstep(total - 0.6f, total, t);
+    ImU32 bg1 = anim::Col(theme::Bg, fadeOut), bg2 = anim::Col(theme::Bg2, fadeOut);
+    dl->AddRectFilledMultiColor(a, b, bg1, bg1, bg2, bg2);
+    float R = std::min(vp->Size.x, vp->Size.y) * 0.17f * zoom;
+    orbfx::RadialGradient(dl, c, 0, R * (2.2f + 0.4f * std::sin(t * 3.f)), anim::Col(anim::WithAlpha(theme::Cyan, 0.16f * fadeOut)),
+                          anim::Col(anim::WithAlpha(theme::Cyan, 0)), 64);
+
+    const auto& shape = assets::KbShape();
+    int N = shape.empty() ? 0 : std::min<int>((int)shape.size(), 1100);
+    float diag = std::sqrt(vp->Size.x * vp->Size.x + vp->Size.y * vp->Size.y);
+    float logoIn = anim::Smoothstep(1.35f, 1.9f, t);
+    for (int i = 0; i < N; ++i) {
+        float h1 = std::fabs(anim::Noise(i * 1.731f + 0.3f)), h2 = std::fabs(anim::Noise(i * 3.117f + 7.1f));
+        float delay = h1 * 0.55f;
+        float k = anim::EaseInOutCubic(anim::Clamp01((t - 0.1f - delay) / 0.95f));
+        float ang = h2 * 6.2832f * 3.f;
+        ImVec2 from(c.x + std::cos(ang) * diag * (0.55f + 0.3f * h1), c.y + std::sin(ang) * diag * (0.55f + 0.3f * h1));
+        ImVec2 to(c.x + shape[i].x * R, c.y + shape[i].y * R);
+        // pequeno redemoinho no caminho
+        float swirl = (1.f - k) * 1.4f;
+        float dx = from.x - to.x, dy = from.y - to.y;
+        float cs = std::cos(swirl), sn = std::sin(swirl);
+        ImVec2 p(to.x + (dx * cs - dy * sn) * (1 - k), to.y + (dx * sn + dy * cs) * (1 - k));
+        float alpha = anim::Clamp01((t - delay) * 3.f) * fadeOut * (1.f - 0.65f * logoIn);
+        ImVec4 col = anim::Lerp(theme::Cyan, ImVec4(1, 1, 1, 1), 0.25f * h2);
+        float sz = R * 0.012f * (0.6f + 0.8f * h2);
+        dl->AddCircleFilled(p, sz * 2.6f, anim::Col(anim::WithAlpha(col, 0.10f * alpha)), 8);
+        dl->AddCircleFilled(p, sz, anim::Col(anim::WithAlpha(col, alpha)), 8);
+    }
+    // anel de luz quando o KB se completa
+    float ring = anim::Clamp01((t - 1.25f) / 0.9f);
+    if (ring > 0 && ring < 1)
+        dl->AddCircle(c, R * (1.1f + 1.4f * anim::EaseOutCubic(ring)), anim::Col(anim::WithAlpha(theme::Cyan, 0.6f * (1 - ring) * fadeOut)), 96, R * 0.025f);
+    // logo
+    if (ImTextureID lt = assets::Logo(); lt && logoIn > 0) {
+        float s = R / std::max(0.2f, assets::KbShapeLogoRatio()) * (0.92f + 0.08f * anim::EaseOutBack(logoIn));
+        dl->AddImageRounded(lt, ImVec2(c.x - s, c.y - s), ImVec2(c.x + s, c.y + s), ImVec2(0, 0), ImVec2(1, 1),
+                            ImGui::GetColorU32(ImVec4(1, 1, 1, logoIn * fadeOut)), s);
+    }
+    // nome
+    float txt = anim::Smoothstep(1.6f, 2.1f, t) * fadeOut;
+    if (txt > 0) {
+        ImFont* f = theme::fonts.huge;
+        const char* name = "KB";
+        ImVec2 ts = f->CalcTextSizeA(f->FontSize * 1.3f, FLT_MAX, 0, name);
+        float y = c.y + R / std::max(0.2f, assets::KbShapeLogoRatio()) + px(14) + (1 - txt) * px(14);
+        dl->AddText(f, f->FontSize * 1.3f, ImVec2(c.x - ts.x * 0.5f, y), anim::Col(theme::Text, txt), name);
+        const char* sub = "Assistente de voz com IA local";
+        ImVec2 ss = ImGui::CalcTextSize(sub);
+        dl->AddText(ImVec2(c.x - ss.x * 0.5f, y + ts.y + px(4)), anim::Col(theme::TextDim, txt), sub);
+    }
+}
+
 } // namespace
 
 void Init(App& app, float scale) {
@@ -1623,6 +1730,7 @@ void OnFilesDropped(App& app, const std::vector<std::string>& paths) {
 void SetDebugMode(int m) { g_debugMode = m; }
 TitleBarInfo GetTitleBar() { return g_title; }
 bool WantsContinuousRender() { return true; }
+bool TimerRunning() { return timer::Running(); }
 
 const char* HotkeyName(int mods, int vk) {
     for (auto& h : kHotkeys)
@@ -1632,6 +1740,12 @@ const char* HotkeyName(int mods, int vk) {
 
 void Frame(App& app, bool mainVisible) {
     CollectTextures();
+    timer::Tick(app);
+    if (int rt = app.requestTimer.exchange(0)) {
+        g_showTimer = true;
+        g_focusNext = "Timer###timer";
+        if (rt == 2) timer::StartNow(app);
+    }
     Config cfg = app.Cfg();
     anim::SetReduceMotion(cfg.reduceMotion);
     SetBackdropPhoto(cfg.bgImage, ImGui::IsAnyItemActive() ? g_edit.bgOpacity : cfg.bgOpacity);
@@ -1651,7 +1765,14 @@ void Frame(App& app, bool mainVisible) {
         if (g_showEmbeds) EmbedsWindow(app);
         if (g_showModels) ModelsWindow(app);
         if (g_showSettings) SettingsWindow(app);
+        if (g_showTimer) {
+            // na primeira vez, acopla o timer junto dos outros painéis
+            if (ImGuiWindow* sw = ImGui::FindWindowByName(kSettings); sw && sw->DockId)
+                ImGui::SetNextWindowDockID(sw->DockId, ImGuiCond_FirstUseEver);
+            timer::Window(app, &g_showTimer);
+        }
         Toasts(app);
+        if (cfg.splash && (GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) == 0 || GetEnvironmentVariableW(L"KB_SPLASH", nullptr, 0) > 0)) Splash(vp);
     }
     static int popTest = GetEnvironmentVariableW(L"KB_POPOUT", nullptr, 0) > 0 ? 30 : -1;
     if (popTest > 0 && --popTest == 0) {

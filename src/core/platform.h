@@ -16,6 +16,10 @@ std::string GetEnv(const char* name);
 // Inicia um processo independente (continua rodando se o KB fechar).
 bool LaunchDetached(const std::string& exe, const std::string& args);
 std::string FindOllama();
+// Regra de entrada no Firewall do Windows para o app do celular.
+bool FirewallRuleExists();
+// Abre o pedido de administrador (UAC) do Windows para criar a regra; retorna true se foi criada.
+bool AddFirewallRuleElevated(int port, const std::string& exePath = "");
 
 // Processo filho (llama-server). Encerrado ao sair do app.
 class ChildProcess {

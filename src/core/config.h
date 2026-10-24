@@ -60,6 +60,12 @@ struct Config {
     bool bgImage = true;                   // foto de fundo
     float bgOpacity = 0.45f;
     bool showThinking = true;              // mostra o raciocínio do modelo
+    bool splash = true;                    // animação de abertura
+
+    // ---- Timer (Muay Thai)
+    int timerRounds = 3, timerRoundSec = 180, timerRestSec = 60, timerPrepSec = 10, timerWarnSec = 10;
+    int timerStartSound = 0, timerEndSound = 0, timerWarnSound = 6;
+    bool timerVoice = true;
 
     bool firstRun = true;
 };

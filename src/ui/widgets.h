@@ -3,7 +3,7 @@
 
 enum class Icon {
     Mic, Send, Stop, Chat, Grid, Cpu, Gear, Close, Minimize, Pin, PopOut, Copy, Refresh, Download, Folder,
-    Check, Info, Warning, Bulb, Play, Trash, Search, Sparkle, Wave, Phone, Image, Monitor, Expand, Shrink, File,
+    Check, Info, Warning, Bulb, Play, Trash, Search, Sparkle, Wave, Phone, Image, Monitor, Expand, Shrink, File, Clock,
 };
 
 namespace w {

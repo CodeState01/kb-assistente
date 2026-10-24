@@ -103,6 +103,7 @@ add_executable(KB WIN32
   src/ui/blocks.cpp
   src/ui/views.cpp
   src/ui/assets.cpp
+  src/ui/timer.cpp
   src/core/perf.cpp
   third_party/qrcodegen.cpp
   res/kb.rc)

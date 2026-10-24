@@ -15,7 +15,8 @@ struct OrbInput {
     bool compact = false;        // versão mini (menos efeitos)
 };
 
-// Orb animado: cada modo tem um conjunto de efeitos; transições são cruzadas por pesos suavizados.
+// "Orb" feito só de partículas: cada modo tem uma forma (esfera, anéis, galáxia, KB, faíscas)
+// e as partículas viajam suavemente entre elas.
 class Orb {
 public:
     void Draw(ImDrawList* dl, ImVec2 center, float radius, const OrbInput& in);
@@ -29,7 +30,8 @@ private:
     float lastRipple_ = 0.f;
     std::vector<Ripple> ripples_;
     std::vector<Particle> sparks_;
-    std::vector<ImVec2> parts_, vels_;   // partículas "KB"
+    std::vector<ImVec2> parts_, vels_;   // partículas (posição relativa ao centro, velocidade)
+    std::vector<float> seeds_;           // 3 números aleatórios fixos por partícula
     float bars_[48] = {};
     ImVec4 colA_, colB_, colC_;
     bool init_ = false;

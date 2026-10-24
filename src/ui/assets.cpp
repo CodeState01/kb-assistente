@@ -11,6 +11,7 @@ namespace {
 GLuint g_bg = 0, g_logo = 0;
 int g_bgW = 0, g_bgH = 0;
 std::vector<ImVec2> g_shape;
+float g_shapeRatio = 0.5f; // meia-largura das letras / meia-largura da logo
 
 bool LoadRes(const wchar_t* name, const uint8_t** data, DWORD* size) {
     HRSRC r = FindResourceW(nullptr, name, MAKEINTRESOURCEW(10));
@@ -70,6 +71,7 @@ void BuildShape(const unsigned char* px, int w, int h) {
     ImVec2 mn(1e9f, 1e9f), mx(-1e9f, -1e9f);
     for (auto& c : cand) { mn.x = std::min(mn.x, c.x); mn.y = std::min(mn.y, c.y); mx.x = std::max(mx.x, c.x); mx.y = std::max(mx.y, c.y); }
     float sx = (mx.x - mn.x) * 0.5f, sy = (mx.y - mn.y) * 0.5f, s = std::max(sx, sy);
+    g_shapeRatio = s / (std::min(w, h) * 0.5f);
     ImVec2 c((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f);
     // embaralha de forma determinística e pega até 900 pontos
     uint32_t seed = 1234567;
@@ -111,5 +113,6 @@ ImTextureID Background(int* w, int* h) {
 }
 ImTextureID Logo() { return (ImTextureID)(intptr_t)g_logo; }
 const std::vector<ImVec2>& KbShape() { return g_shape; }
+float KbShapeLogoRatio() { return g_shapeRatio; }
 
 } // namespace assets

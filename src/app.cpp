@@ -8,6 +8,7 @@
 #include "core/install.h"
 #include "core/skills.h"
 #include "net/web.h"
+#include "audio/sfx.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
@@ -21,35 +22,15 @@ double NowSeconds() {
 
 // ------------------------------------------------------------------ Sons curtos (earcons)
 namespace {
-std::vector<char> MakeChime(float f1, float f2, float dur, float gain) {
-    const int sr = 22050;
-    int n = (int)(dur * sr);
-    std::vector<char> wav(44 + n * 2);
-    auto w32 = [&](int off, uint32_t v) { memcpy(&wav[off], &v, 4); };
-    auto w16 = [&](int off, uint16_t v) { memcpy(&wav[off], &v, 2); };
-    memcpy(&wav[0], "RIFF", 4); w32(4, 36 + n * 2); memcpy(&wav[8], "WAVE", 4);
-    memcpy(&wav[12], "fmt ", 4); w32(16, 16); w16(20, 1); w16(22, 1); w32(24, sr); w32(28, sr * 2); w16(32, 2); w16(34, 16);
-    memcpy(&wav[36], "data", 4); w32(40, n * 2);
-    double phase = 0;
-    for (int i = 0; i < n; ++i) {
-        float t = (float)i / sr;
-        float u = t / dur;
-        float f = f1 + (f2 - f1) * (u < 0.5f ? u * 2 : 1.f);
-        phase += 2 * 3.14159265 * f / sr;
-        float env = std::min(1.f, t / 0.008f) * std::exp(-4.5f * u);
-        float s = (float)(std::sin(phase) * 0.8 + std::sin(phase * 2.0) * 0.15 + std::sin(phase * 3.0) * 0.05) * env * gain;
-        int16_t v = (int16_t)std::clamp(s * 32767.f, -32767.f, 32767.f);
-        memcpy(&wav[44 + i * 2], &v, 2);
-    }
-    return wav;
+bool g_agendaForced = false;   // KB_AGENDA_PUBLIC (teste)
+void SaveCfg(Config c) {
+    if (g_agendaForced) c.agendaPublic = false;
+    config::Save(c);
 }
 
 void PlayChime(int kind) {
-    static const std::vector<char> start = MakeChime(660, 990, 0.16f, 0.22f);
-    static const std::vector<char> stop = MakeChime(880, 590, 0.14f, 0.18f);
-    static const std::vector<char> err = MakeChime(330, 260, 0.22f, 0.2f);
-    const std::vector<char>& b = kind == 0 ? start : kind == 1 ? stop : err;
-    PlaySoundW((LPCWSTR)b.data(), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+    // sons pelo mixer da interface (não cortam o timer nem outros efeitos)
+    sfx::Play(kind == 0 ? sfx::ListenStart : kind == 1 ? sfx::ListenStop : sfx::Error);
 }
 
 // Converte o fluxo de texto da IA em frases para a fala, pulando código e tabelas.
@@ -157,6 +138,11 @@ void App::Init(bool startedMinimized) {
         _wcsicmp(text::Widen(platform::ExePath()).c_str(), install::InstalledExe().c_str()) == 0)
         platform::SetAutostart(true, cfg_.startMinimized);
 
+    sfx::Init();
+    sfx::SetEnabled(cfg_.sfx);
+    sfx::SetVolume(cfg_.sfxVolume);
+    sfx::SetHover(cfg_.sfxHover);
+
     tts_ = std::make_unique<TextToSpeech>();
     tts_->SetVoice(cfg_.ttsVoice);
     tts_->SetRate(cfg_.ttsRate);
@@ -185,7 +171,9 @@ void App::Init(bool startedMinimized) {
     if (cfg_.backend == LlmBackend::Ollama) EnsureOllama(false);
     RefreshModels();
     ScanLocalFiles();
-    if (cfg_.mobileEnabled) SetMobile(true);
+    // Teste: KB_AGENDA_PUBLIC liga a página /agendar só nesta sessão (não grava na config)
+    if (GetEnvironmentVariableW(L"KB_AGENDA_PUBLIC", nullptr, 0) > 0 && !cfg_.agendaPublic) cfg_.agendaPublic = g_agendaForced = true;
+    if (cfg_.mobileEnabled || cfg_.agendaPublic) SetMobile(true);
 
     bool diagnostic = GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) > 0;
     if (cfg_.greetOnStart && cfg_.speakReplies && !diagnostic) {
@@ -256,8 +244,9 @@ void App::Shutdown() {
     mic_.Stop();
     tts_.reset();
     StopLocalServer();
+    sfx::Shutdown();
     std::lock_guard<std::mutex> l(cfgMtx_);
-    config::Save(cfg_);
+    SaveCfg(cfg_);
 }
 
 void App::Update() {
@@ -272,7 +261,7 @@ void App::Update() {
         std::lock_guard<std::mutex> l(cfgMtx_);
         if (saveAt_ > 0 && now >= saveAt_) {
             saveAt_ = 0;
-            config::Save(cfg_);
+            SaveCfg(cfg_);
         }
     }
     {
@@ -343,6 +332,7 @@ void App::SendText(const std::string& t, bool fromVoice, std::vector<PicturePtr>
     std::string q = text::Trim(t);
     pics.erase(std::remove(pics.begin(), pics.end(), nullptr), pics.end());
     if (q.empty() && pics.empty()) return;
+    sfx::Play(sfx::Send, 0.8f);
     if (q.empty()) q = "O que você vê nesta imagem?";
     const bool userPics = !pics.empty();
     // Com a tela compartilhada, cada pergunta leva o quadro mais recente.
@@ -587,6 +577,7 @@ void App::FinishMessage(int id, bool error, const std::string& replace) {
     std::lock_guard<std::mutex> l(msgMtx_);
     for (auto it = messages_.rbegin(); it != messages_.rend(); ++it)
         if (it->id == id) {
+            if (!it->user && it->streaming && !error) sfx::Play(sfx::Receive, 0.7f);
             it->streaming = false;
             it->thinkingLive = false;
             it->error = error;
@@ -597,8 +588,11 @@ void App::FinishMessage(int id, bool error, const std::string& replace) {
 }
 
 void App::ProcessQuery(const std::string& q) {
-    (void)q;
     cancelLlm_ = false;
+    currentQuery_ = q;
+    computerGranted_ = false;
+    computer::StopFlag() = false;
+    lastSnap_ = computer::Snapshot();
     Config c = Cfg();
     SetState(AssistState::Thinking);
 
@@ -740,8 +734,10 @@ void App::ProcessQuery(const std::string& q) {
     };
     // Laço de ferramentas: o modelo pode pesquisar, ler páginas, usar skills... e depois responder.
     const std::string toolsJson = useTools ? ToolsJson() : std::string();
+    lastModelVision_ = useTools && ModelHasVision(model);
     bool ok = false;
-    for (int step = 0; step < 6; ++step) {
+    int maxSteps = 6;
+    for (int step = 0; step < maxSteps; ++step) {
         std::vector<ToolCall> calls;
         ok = llm::Chat(c, model, msgs, onTok, &err, &cancelLlm_, onThink, toolsJson, useTools ? &calls : nullptr);
         if (!ok || cancelLlm_ || quit_ || calls.empty()) break;
@@ -755,12 +751,28 @@ void App::ProcessQuery(const std::string& q) {
         msgs.push_back(asst);
         SetState(AssistState::Thinking);
         for (auto& call : calls) {
-            ChatMsg tm{"tool", RunTool(aid, call), {}};
+            std::string shot;
+            ChatMsg tm{"tool", RunTool(aid, call, &shot), {}};
             tm.toolName = call.name;
+            if (!shot.empty()) tm.imagesB64.push_back(shot);
             msgs.push_back(tm);
+            // tarefas na tela precisam de mais passos (abrir, olhar, clicar, digitar...)
+            if (call.name == "look_at_screen" || call.name == "click" || call.name == "type_text" || call.name == "press_keys" ||
+                call.name == "open_website" || call.name == "open_app" || call.name == "scroll" || call.name == "click_xy")
+                maxSteps = 25;
         }
+        // as capturas antigas pesam: mantém só a imagem mais recente no histórico
+        int seenShot = 0;
+        for (auto it = msgs.rbegin(); it != msgs.rend(); ++it)
+            if (it->role == "tool" && !it->imagesB64.empty() && seenShot++ > 0) it->imagesB64.clear();
+        if (cancelLlm_ || computer::StopFlag()) break;
     }
     thinkingHidden_ = false;
+    if (computerActive_) {
+        computerActive_ = false;
+        SetComputerStatus("");
+    }
+    computerGranted_ = false;
 
     if (cancelLlm_) {
         FinishMessage(aid, false);
@@ -877,9 +889,10 @@ std::string App::MobileState(int since) {
 }
 
 void App::SetMobile(bool on) {
-    if (!on) { tunnel_.Stop(); mobile_.Stop(); return; }
     Config c = Cfg();
-    if (c.mobileMode == 0) tunnel_.Start(c.mobilePort);
+    on = on || c.agendaPublic;   // a página de agendamento usa o mesmo servidor
+    if (!on) { tunnel_.Stop(); mobile_.Stop(); return; }
+    if (c.mobileMode == 0 || c.agendaPublic) tunnel_.Start(c.mobilePort);
     else tunnel_.Stop();
     if (mobile_.Running()) return;
     MobileHooks h;
@@ -894,6 +907,8 @@ void App::SetMobile(bool on) {
     };
     h.listen = [this] { if (state_ == AssistState::Idle) StartListening(); };
     h.stop = [this] { Interrupt(); };
+    h.publicRoute = [this](const std::string& m, const std::string& p, const std::string& t, const std::string& b, int* code, std::string* ct,
+                           std::string* out) { return PublicRoute(m, p, t, b, code, ct, out); };
     std::string err;
     if (!mobile_.Start(c.mobilePort, c.mobileToken, h, &err)) Notify("Celular: " + err, 2);
 }
@@ -902,6 +917,7 @@ void App::SetMobile(bool on) {
 void App::Notify(const std::string& t, int kind) {
     std::lock_guard<std::mutex> l(toastMtx_);
     toasts_.push_back({nextToast_++, t, kind, NowSeconds()});
+    sfx::Play(kind == 1 ? sfx::Success : kind == 2 ? sfx::Error : sfx::Notify, 0.8f);
     if (toasts_.size() > 5) toasts_.erase(toasts_.begin());
 }
 
@@ -939,7 +955,7 @@ void App::ApplyConfig(const Config& c) {
                 (o.backend != c.backend || o.ggufPath != c.ggufPath || o.ggufGpuLayers != c.ggufGpuLayers ||
                  o.contextSize != c.contextSize || o.llamaServerPath != c.llamaServerPath);
         mic = o.micDevice != c.micDevice;
-        mobile = o.mobileEnabled != c.mobileEnabled || (c.mobileEnabled && o.mobileMode != c.mobileMode);
+        mobile = o.mobileEnabled != c.mobileEnabled || (c.mobileEnabled && o.mobileMode != c.mobileMode) || o.agendaPublic != c.agendaPublic;
         stt = o.whisperModel != c.whisperModel;
         autostart = o.startWithWindows != c.startWithWindows || (c.startWithWindows && o.startMinimized != c.startMinimized);
         if (o.backend == LlmBackend::LocalGguf && c.backend != LlmBackend::LocalGguf) local = false;
@@ -948,6 +964,9 @@ void App::ApplyConfig(const Config& c) {
         if (silent_) cfg_.speakReplies = keepSpeak;
         ScheduleSave();
     }
+    sfx::SetEnabled(c.sfx);
+    sfx::SetVolume(c.sfxVolume);
+    sfx::SetHover(c.sfxHover);
     if (autostart && !platform::SetAutostart(c.startWithWindows, c.startMinimized))
         Notify("Não foi possível alterar a inicialização com o Windows.", 2);
     if (local) StartLocalServer();

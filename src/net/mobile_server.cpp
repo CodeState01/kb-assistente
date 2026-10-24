@@ -155,6 +155,11 @@ void MobileServer::Handle(uintptr_t sockp) {
               "<text x='256' y='300' font-family='Segoe UI,Arial' font-weight='700' font-size='130' text-anchor='middle' fill='#0b0f1a'>KB</text></svg>");
         return;
     }
+    if (hooks_.publicRoute && (path == "/agendar" || path.rfind("/agendar/", 0) == 0)) {
+        int code = 404;
+        std::string ctype = "text/plain", out = "não encontrado";
+        if (hooks_.publicRoute(method, path, target, body, &code, &ctype, &out)) { Reply(s, code, ctype.c_str(), out); return; }
+    }
     std::string t = QueryParam(target, "t");
     if (path == "/manifest.webmanifest") {
         json m = {{"name", "KB"}, {"short_name", "KB"}, {"start_url", "/?t=" + t}, {"display", "standalone"},

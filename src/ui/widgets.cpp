@@ -4,6 +4,7 @@
 #include <cstring>
 #include "ui/anim.h"
 #include "ui/theme.h"
+#include "ui/orb.h"
 #include "imgui_internal.h"
 #include <cmath>
 #include <algorithm>
@@ -14,6 +15,8 @@ using theme::px;
 static constexpr float PI = 3.14159265f;
 
 namespace w {
+
+void (*g_toggleSound)(bool on) = nullptr;
 
 static ImVec2 operator+(ImVec2 a, ImVec2 b) { return ImVec2(a.x + b.x, a.y + b.y); }
 static ImVec2 V(ImVec2 c, float s, float x, float y) { return ImVec2(c.x + x * s, c.y + y * s); }
@@ -191,6 +194,131 @@ void DrawIcon(ImDrawList* dl, Icon icon, ImVec2 c, float s, ImU32 col, float t) 
             }
         break;
     }
+    case Icon::Bag:
+        dl->PathLineTo(V(c, s, -0.32f, -0.14f));
+        dl->PathLineTo(V(c, s, 0.32f, -0.14f));
+        dl->PathLineTo(V(c, s, 0.28f, 0.38f));
+        dl->PathLineTo(V(c, s, -0.28f, 0.38f));
+        dl->PathStroke(col, ImDrawFlags_Closed, t);
+        dl->PathArcTo(V(c, s, 0, -0.14f), s * 0.16f, PI, 2 * PI, 12);
+        dl->PathStroke(col, 0, t);
+        break;
+    case Icon::Cart:
+        dl->PathLineTo(V(c, s, -0.4f, -0.3f));
+        dl->PathLineTo(V(c, s, -0.26f, -0.3f));
+        dl->PathLineTo(V(c, s, -0.16f, 0.14f));
+        dl->PathLineTo(V(c, s, 0.3f, 0.14f));
+        dl->PathLineTo(V(c, s, 0.38f, -0.16f));
+        dl->PathLineTo(V(c, s, -0.22f, -0.16f));
+        dl->PathStroke(col, 0, t);
+        dl->AddCircleFilled(V(c, s, -0.1f, 0.3f), t * 1.3f, col);
+        dl->AddCircleFilled(V(c, s, 0.24f, 0.3f), t * 1.3f, col);
+        break;
+    case Icon::Tag:
+        dl->PathLineTo(V(c, s, -0.36f, -0.36f));
+        dl->PathLineTo(V(c, s, 0.02f, -0.36f));
+        dl->PathLineTo(V(c, s, 0.38f, 0.0f));
+        dl->PathLineTo(V(c, s, 0.0f, 0.38f));
+        dl->PathLineTo(V(c, s, -0.36f, 0.02f));
+        dl->PathStroke(col, ImDrawFlags_Closed, t);
+        dl->AddCircleFilled(V(c, s, -0.16f, -0.16f), t * 1.1f, col);
+        break;
+    case Icon::Calendar:
+        dl->AddRect(V(c, s, -0.34f, -0.26f), V(c, s, 0.34f, 0.36f), col, s * 0.06f, 0, t);
+        dl->AddLine(V(c, s, -0.34f, -0.06f), V(c, s, 0.34f, -0.06f), col, t);
+        dl->AddLine(V(c, s, -0.16f, -0.38f), V(c, s, -0.16f, -0.18f), col, t);
+        dl->AddLine(V(c, s, 0.16f, -0.38f), V(c, s, 0.16f, -0.18f), col, t);
+        dl->AddRectFilled(V(c, s, -0.2f, 0.06f), V(c, s, -0.06f, 0.2f), col, s * 0.02f);
+        break;
+    case Icon::User:
+        dl->AddCircle(V(c, s, 0, -0.14f), s * 0.16f, col, 20, t);
+        dl->PathArcTo(V(c, s, 0, 0.4f), s * 0.32f, PI * 1.08f, PI * 1.92f, 18);
+        dl->PathStroke(col, 0, t);
+        break;
+    case Icon::Globe:
+        dl->AddCircle(c, s * 0.36f, col, 28, t);
+        dl->AddLine(V(c, s, -0.36f, 0), V(c, s, 0.36f, 0), col, t);
+        dl->AddEllipse(c, ImVec2(s * 0.15f, s * 0.36f), col, 0, 24, t);
+        break;
+    case Icon::Cursor:
+        dl->PathLineTo(V(c, s, -0.24f, -0.36f));
+        dl->PathLineTo(V(c, s, 0.26f, 0.08f));
+        dl->PathLineTo(V(c, s, 0.04f, 0.1f));
+        dl->PathLineTo(V(c, s, 0.16f, 0.36f));
+        dl->PathLineTo(V(c, s, 0.06f, 0.4f));
+        dl->PathLineTo(V(c, s, -0.06f, 0.14f));
+        dl->PathLineTo(V(c, s, -0.24f, 0.28f));
+        dl->PathStroke(col, ImDrawFlags_Closed, t);
+        break;
+    case Icon::Edit:
+        dl->AddLine(V(c, s, -0.28f, 0.28f), V(c, s, 0.22f, -0.22f), col, t * 2.2f);
+        dl->AddTriangleFilled(V(c, s, -0.36f, 0.36f), V(c, s, -0.33f, 0.2f), V(c, s, -0.2f, 0.33f), col);
+        dl->AddLine(V(c, s, -0.36f, 0.4f), V(c, s, 0.34f, 0.4f), col, t * 0.8f);
+        break;
+    case Icon::External:
+        dl->PathLineTo(V(c, s, 0.0f, -0.3f));
+        dl->PathLineTo(V(c, s, -0.32f, -0.3f));
+        dl->PathLineTo(V(c, s, -0.32f, 0.32f));
+        dl->PathLineTo(V(c, s, 0.3f, 0.32f));
+        dl->PathLineTo(V(c, s, 0.3f, 0.0f));
+        dl->PathStroke(col, 0, t);
+        dl->AddLine(V(c, s, -0.02f, 0.02f), V(c, s, 0.36f, -0.36f), col, t);
+        dl->AddLine(V(c, s, 0.12f, -0.36f), V(c, s, 0.36f, -0.36f), col, t);
+        dl->AddLine(V(c, s, 0.36f, -0.36f), V(c, s, 0.36f, -0.12f), col, t);
+        break;
+    case Icon::Bell:
+        dl->PathArcTo(V(c, s, 0, -0.06f), s * 0.24f, PI, 2 * PI, 14);
+        dl->PathLineTo(V(c, s, 0.28f, 0.24f));
+        dl->PathLineTo(V(c, s, -0.28f, 0.24f));
+        dl->PathLineTo(V(c, s, -0.24f, -0.06f));
+        dl->PathStroke(col, ImDrawFlags_Closed, t);
+        dl->AddCircleFilled(V(c, s, 0, 0.34f), t * 1.2f, col);
+        break;
+    case Icon::Shield:
+        dl->PathLineTo(V(c, s, 0, -0.38f));
+        dl->PathLineTo(V(c, s, 0.32f, -0.24f));
+        dl->PathLineTo(V(c, s, 0.28f, 0.1f));
+        dl->PathLineTo(V(c, s, 0, 0.38f));
+        dl->PathLineTo(V(c, s, -0.28f, 0.1f));
+        dl->PathLineTo(V(c, s, -0.32f, -0.24f));
+        dl->PathStroke(col, ImDrawFlags_Closed, t);
+        dl->PathLineTo(V(c, s, -0.12f, 0.0f));
+        dl->PathLineTo(V(c, s, -0.02f, 0.1f));
+        dl->PathLineTo(V(c, s, 0.14f, -0.1f));
+        dl->PathStroke(col, 0, t);
+        break;
+    case Icon::Bolt:
+        dl->AddTriangleFilled(V(c, s, 0.08f, -0.4f), V(c, s, -0.24f, 0.06f), V(c, s, 0.02f, 0.04f), col);
+        dl->AddTriangleFilled(V(c, s, -0.02f, -0.04f), V(c, s, 0.24f, -0.06f), V(c, s, -0.08f, 0.4f), col);
+        break;
+    case Icon::Keyboard:
+        dl->AddRect(V(c, s, -0.4f, -0.22f), V(c, s, 0.4f, 0.24f), col, s * 0.06f, 0, t);
+        for (int r = 0; r < 2; ++r)
+            for (int k = 0; k < 5; ++k)
+                dl->AddRectFilled(V(c, s, -0.3f + k * 0.13f, -0.12f + r * 0.12f), V(c, s, -0.23f + k * 0.13f, -0.06f + r * 0.12f), col);
+        dl->AddLine(V(c, s, -0.18f, 0.14f), V(c, s, 0.18f, 0.14f), col, t);
+        break;
+    case Icon::Star: {
+        for (int i = 0; i < 10; ++i) {
+            float a = -PI * 0.5f + i * PI / 5, r = (i % 2) ? 0.16f : 0.38f;
+            dl->PathLineTo(ImVec2(c.x + std::cos(a) * s * r, c.y + std::sin(a) * s * r + s * 0.03f));
+        }
+        dl->PathFillConvex(col);
+        break;
+    }
+    case Icon::Volume:
+        dl->PathLineTo(V(c, s, -0.36f, -0.1f));
+        dl->PathLineTo(V(c, s, -0.2f, -0.1f));
+        dl->PathLineTo(V(c, s, 0.0f, -0.3f));
+        dl->PathLineTo(V(c, s, 0.0f, 0.3f));
+        dl->PathLineTo(V(c, s, -0.2f, 0.1f));
+        dl->PathLineTo(V(c, s, -0.36f, 0.1f));
+        dl->PathStroke(col, ImDrawFlags_Closed, t);
+        dl->PathArcTo(V(c, s, 0.02f, 0), s * 0.16f, -PI * 0.3f, PI * 0.3f, 8);
+        dl->PathStroke(col, 0, t);
+        dl->PathArcTo(V(c, s, 0.02f, 0), s * 0.3f, -PI * 0.3f, PI * 0.3f, 10);
+        dl->PathStroke(col, 0, t);
+        break;
     case Icon::Clock:
         dl->AddCircle(V(c, s, 0, 0.04f), s * 0.33f, col, 24, t);
         dl->AddLine(V(c, s, 0, 0.04f), V(c, s, 0, -0.16f), col, t);
@@ -219,6 +347,34 @@ void Tooltip(const char* text) {
 }
 
 // Botão de ícone: quadrado de cantos suaves; ativo = fundo azul translúcido + ícone azul. Sem halos.
+
+// ---- iluminação: superfícies com gradiente, brilho e luz de borda
+void GradRect(ImDrawList* dl, ImVec2 a, ImVec2 b, ImVec4 top, ImVec4 bot, float r, ImDrawFlags f) {
+    int v0 = dl->VtxBuffer.Size;
+    dl->AddRectFilled(a, b, anim::Col(ImVec4(1, 1, 1, top.w)), r, f);
+    int v1 = dl->VtxBuffer.Size;
+    ImGui::ShadeVertsLinearColorGradientKeepAlpha(dl, v0, v1, a, ImVec2(a.x, b.y), anim::Col(ImVec4(top.x, top.y, top.z, 1)),
+                                                  anim::Col(ImVec4(bot.x, bot.y, bot.z, 1)));
+}
+
+void Glow(ImDrawList* dl, ImVec2 a, ImVec2 b, float r, ImVec4 col, float strength) {
+    if (strength <= 0.01f) return;
+    for (int i = 4; i >= 1; --i) {
+        float e = px(2.5f * i);
+        dl->AddRectFilled(ImVec2(a.x - e, a.y - e + px(2)), ImVec2(b.x + e, b.y + e + px(2)), anim::Col(anim::WithAlpha(col, strength * 0.05f * (5 - i))), r + e);
+    }
+}
+
+void Surface(ImDrawList* dl, ImVec2 a, ImVec2 b, float r, float hover, ImVec4 accent, bool selected) {
+    ImVec4 top = anim::Lerp(ImVec4(0.135f, 0.152f, 0.185f, 1.f), ImVec4(0.17f, 0.19f, 0.23f, 1.f), hover);
+    ImVec4 bot = anim::Lerp(ImVec4(0.105f, 0.118f, 0.143f, 1.f), ImVec4(0.13f, 0.145f, 0.175f, 1.f), hover);
+    if (selected) Glow(dl, a, b, r, accent, 0.9f);
+    GradRect(dl, a, b, top, bot, r);
+    // luz de cima (borda superior clara) e contorno sutil
+    dl->AddLine(ImVec2(a.x + r, a.y + 0.5f), ImVec2(b.x - r, a.y + 0.5f), anim::Col(ImVec4(1, 1, 1, 0.07f + 0.05f * hover)), px(1));
+    dl->AddRect(a, b, anim::Col(selected ? anim::WithAlpha(accent, 0.9f) : ImVec4(1, 1, 1, 0.045f + 0.04f * hover)), r, 0, selected ? px(1.5f) : px(1));
+}
+
 bool IconButton(const char* id, Icon icon, float size, const char* tooltip, bool active, ImVec4 accent, bool round) {
     ImGui::PushID(id);
     ImVec2 p = ImGui::GetCursorScreenPos();
@@ -236,8 +392,13 @@ bool IconButton(const char* id, Icon icon, float size, const char* tooltip, bool
     float rr = size * 0.5f * (1.f - 0.05f * press);
     ImVec4 bg = anim::Lerp(ImVec4(1, 1, 1, 0.0f), ImVec4(1, 1, 1, 0.07f), h);
     bg = anim::Lerp(bg, anim::WithAlpha(accent, 0.16f + 0.06f * h), a);
+    if (a > 0.01f) {
+        if (round) orbfx::RadialGradient(dl, c, rr * 0.6f, rr * 1.9f, anim::Col(anim::WithAlpha(accent, 0.22f * a)), anim::Col(anim::WithAlpha(accent, 0.f)), 32);
+        else Glow(dl, ImVec2(c.x - rr, c.y - rr), ImVec2(c.x + rr, c.y + rr), px(6), accent, 0.55f * a);
+    }
     if (round) dl->AddCircleFilled(c, rr, anim::Col(bg), 32);
     else dl->AddRectFilled(ImVec2(c.x - rr, c.y - rr), ImVec2(c.x + rr, c.y + rr), anim::Col(bg), px(6));
+    if (a > 0.01f && !round) dl->AddLine(ImVec2(c.x - rr + px(6), c.y - rr + 0.5f), ImVec2(c.x + rr - px(6), c.y - rr + 0.5f), anim::Col(anim::WithAlpha(accent, 0.5f * a)), px(1));
     ImVec4 ic = anim::Lerp(theme::TextDim, theme::Text, h);
     ic = anim::Lerp(ic, accent, a);
     DrawIcon(dl, icon, c, size * 0.5f, anim::Col(ic));
@@ -268,13 +429,16 @@ static bool ButtonBase(const char* label, ImVec2 size, Icon icon, bool primary) 
     if (primary) {
         ImVec4 base = anim::Lerp(theme::Cyan, ImVec4(0.32f, 0.65f, 1.f, 1.f), h);
         base = anim::Lerp(base, theme::Blue, pr);
-        dl->AddRectFilled(a, b, anim::Col(base), r);
+        if (!disabled) Glow(dl, a, b, r, theme::Cyan, 0.35f + 0.65f * h);
+        GradRect(dl, a, b, anim::Lerp(base, ImVec4(1, 1, 1, 1), 0.14f), anim::Lerp(base, ImVec4(0, 0, 0, 1), 0.12f), r);
         // linha de luz no topo (acabamento de "botão físico")
         dl->AddLine(ImVec2(a.x + r, a.y + 1), ImVec2(b.x - r, a.y + 1), anim::Col(ImVec4(1, 1, 1, 0.22f)), px(1));
         tc = ImVec4(1, 1, 1, 1);
     } else {
-        dl->AddRectFilled(a, b, anim::Col(anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), ImVec4(0.153f, 0.173f, 0.208f, 1.f), h)), r);
-        dl->AddRect(a, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.08f), anim::WithAlpha(theme::Cyan, 0.6f), h)), r, 0, px(1));
+        GradRect(dl, a, b, anim::Lerp(ImVec4(0.145f, 0.162f, 0.195f, 1.f), ImVec4(0.18f, 0.2f, 0.24f, 1.f), h),
+                 anim::Lerp(ImVec4(0.11f, 0.124f, 0.15f, 1.f), ImVec4(0.14f, 0.157f, 0.19f, 1.f), h), r);
+        dl->AddLine(ImVec2(a.x + r, a.y + 0.5f), ImVec2(b.x - r, a.y + 0.5f), anim::Col(ImVec4(1, 1, 1, 0.07f + 0.05f * h)), px(1));
+        dl->AddRect(a, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.07f), anim::WithAlpha(theme::Cyan, 0.6f), h)), r, 0, px(1));
         tc = anim::Lerp(theme::TextDim, theme::Text, h);
     }
     if (disabled) tc.w *= 0.45f;
@@ -298,7 +462,7 @@ bool Toggle(const char* label, bool* v, const char* hint) {
     ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
     float rowH = std::max(ImGui::GetFrameHeight(), ts.y);
     bool pressed = ImGui::InvisibleButton("##tg", ImVec2(std::max(avail, wdt + ts.x + px(12)), rowH));
-    if (pressed) *v = !*v;
+    if (pressed) { *v = !*v; if (g_toggleSound) g_toggleSound(*v); }
     ImGuiID id = ImGui::GetItemID();
     bool hov = ImGui::IsItemHovered();
     float t = anim::Spring(id, *v ? 1.f : 0.f, 300.f, 26.f);

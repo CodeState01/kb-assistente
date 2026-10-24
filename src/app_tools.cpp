@@ -3,6 +3,8 @@
 #include "core/skills.h"
 #include "core/text.h"
 #include "net/web.h"
+#include "features/store.h"
+#include "features/agenda.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 
@@ -19,9 +21,47 @@ std::string App::ToolsJson() {
     if (c.webTools) {
         tools.push_back(fn("web_search", "Pesquisa na internet. Use para notícias, fatos recentes, preços, clima, resultados de jogos ou qualquer coisa que você não saiba com certeza.",
                            {{"query", {{"type", "string"}, {"description", "o que pesquisar"}}}}, {"query"}));
-        tools.push_back(fn("open_url", "Abre uma página da web e devolve o texto dela (use depois de web_search para ler um resultado).",
+        tools.push_back(fn("read_page", "Lê o texto de uma página da web (use depois de web_search para ler um resultado). Não abre nada na tela.",
                            {{"url", {{"type", "string"}, {"description", "endereço completo https://..."}}}}, {"url"}));
     }
+    auto S = [](const char* d) { return json{{"type", "string"}, {"description", d}}; };
+    auto I = [](const char* d) { return json{{"type", "integer"}, {"description", d}}; };
+    // ---- computador
+    tools.push_back(fn("open_website", "Abre um site no navegador da pessoa (YouTube, Gmail, Instagram...). Para trocar a conta do Gmail use https://accounts.google.com/AccountChooser?continue=https://mail.google.com/",
+                       {{"url", S("endereço, ex.: youtube.com ou https://www.youtube.com/results?search_query=muay+thai")}}, {"url"}));
+    tools.push_back(fn("open_app", "Abre um programa instalado no PC (Chrome, Spotify, WhatsApp, Bloco de Notas, Calculadora...).", {{"name", S("nome do programa")}}, {"name"}));
+    tools.push_back(fn("read_file", "Lê um arquivo de texto do PC para você ver ou editar (para editar, depois escreva o arquivo inteiro num bloco ```arquivo).",
+                       {{"path", S("caminho, ex.: Área de Trabalho\\notas.txt")}}, {"path"}));
+    tools.push_back(fn("list_folder", "Lista os arquivos de uma pasta do PC.", {{"path", S("pasta, ex.: Documentos")}}, {"path"}));
+    if (c.computerControl) {
+        tools.push_back(fn("look_at_screen", "Mostra a janela ativa e a lista numerada dos botões, links e campos que dá para clicar.", json::object(), {}));
+        tools.push_back(fn("click", "Clica (com o mouse) num controle da lista do look_at_screen.",
+                           {{"element", I("número do controle")}, {"double", json{{"type", "boolean"}}}}, {"element"}));
+        tools.push_back(fn("click_xy", "Clica numa posição da imagem da tela (só se o controle não aparecer na lista).", {{"x", I("x na imagem")}, {"y", I("y na imagem")}}, {"x", "y"}));
+        tools.push_back(fn("type_text", "Digita um texto (opcionalmente clicando antes num campo da lista e apertando Enter no fim).",
+                           {{"text", S("o que digitar")}, {"element", I("campo onde digitar (opcional)")}, {"enter", json{{"type", "boolean"}}}}, {"text"}));
+        tools.push_back(fn("press_keys", "Aperta teclas/atalhos: enter, tab, esc, ctrl+l, ctrl+t, alt+tab, ctrl+w, f5, pagedown...", {{"keys", S("atalho")}}, {"keys"}));
+        tools.push_back(fn("scroll", "Rola a janela ativa.", {{"direction", S("up ou down")}, {"amount", I("quanto (1-20)")}}, {"direction"}));
+        tools.push_back(fn("wait", "Espera a página/programa carregar.", {{"seconds", I("segundos (1-15)")}}, {"seconds"}));
+    }
+    // ---- loja
+    tools.push_back(fn("store_search", "Procura produtos na loja do KB (luvas, bandagens, caneleiras, shorts, camisetas, tops da KB...) com preço e tamanhos.",
+                       {{"query", S("o que procurar, ex.: luva 14 oz")}}, {"query"}));
+    tools.push_back(fn("show_product", "Abre a loja do KB mostrando um produto (use o id entre colchetes do store_search).", {{"id", S("id do produto")}}, {"id"}));
+    tools.push_back(fn("open_store", "Abre a janela da loja do KB.", json::object(), {}));
+    // ---- agenda
+    tools.push_back(fn("agenda_add", "Adiciona um item à rotina semanal da treinadora (aula, compromisso ou horário livre).",
+                       {{"title", S("ex.: Muay Thai adulto")}, {"days", S("dias, ex.: segunda a sexta / seg, qua e sex / sábado")},
+                        {"start", S("início HH:MM")}, {"end", S("fim HH:MM")}, {"type", S("aula (aceita experimental), ocupado ou livre")},
+                        {"trial_spots", I("vagas de experimental por aula (padrão 2)")}},
+                       {"title", "days", "start", "end"}));
+    tools.push_back(fn("agenda_list", "Mostra a rotina semanal cadastrada.", json::object(), {}));
+    tools.push_back(fn("agenda_remove", "Remove um item da rotina (use o id entre colchetes do agenda_list).", {{"id", S("id")}}, {"id"}));
+    tools.push_back(fn("agenda_free_slots", "Lista os próximos horários livres para aula experimental.", json::object(), {}));
+    tools.push_back(fn("agenda_book_trial", "Pede uma aula experimental para alguém (a treinadora confirma no notebook).",
+                       {{"name", S("nome do aluno")}, {"phone", S("WhatsApp com DDD")}, {"slot_key", S("código do horário, ex.: 2026-10-27 19:00")}},
+                       {"name", "slot_key"}));
+    tools.push_back(fn("open_agenda", "Abre a janela da agenda.", json::object(), {}));
     tools.push_back(fn("use_skill", "Carrega as instruções de uma skill (habilidade) instalada. Use quando o pedido combinar com a descrição de uma skill.",
                        {{"name", {{"type", "string"}, {"description", "nome da skill"}}}}, {"name"}));
     tools.push_back(fn("create_workout", "Cria e salva um treino no timer de rounds do KB.",
@@ -36,8 +76,17 @@ std::string App::ToolsJson() {
 std::string App::ToolsPrompt() {
     Config c = Cfg();
     std::string p = "\n\nFERRAMENTAS: você pode chamar ferramentas quando ajudar";
-    if (c.webTools) p += " (web_search para pesquisar na internet, open_url para ler uma página)";
+    if (c.webTools) p += " (web_search para pesquisar na internet, read_page para ler uma página)";
     p += ". Depois de usar uma ferramenta, responda normalmente em português.";
+    p += "\nCOMPUTADOR: para abrir sites use open_website (ex.: \"abre o YouTube\"), para programas open_app.";
+    if (c.computerControl)
+        p += " Para tarefas na tela (clicar, preencher, procurar no YouTube, trocar conta do Gmail): look_at_screen, depois click/type_text/press_keys/scroll."
+             " Cada ação já devolve a tela atualizada. Vá passo a passo e confirme o resultado. NUNCA digite senhas, dados de cartão ou códigos de"
+             " verificação: peça para a pessoa digitar. Antes de enviar, comprar, publicar ou apagar algo, pergunte à pessoa.";
+    p += "\nLOJA: store_search acha produtos (luvas, bandagens, caneleiras e os produtos da KB); mostre com show_product. Produtos de marcas"
+         " parceiras são comprados na loja original (o KB abre o carrinho); os da KB pelo WhatsApp com cupom.";
+    p += "\nAGENDA: a treinadora fala a rotina e você salva com agenda_add (um item por aula/compromisso). Para aula experimental, use"
+         " agenda_free_slots e agenda_book_trial; a aula só fica marcada depois que ela confirmar no notebook.";
     auto list = skills::LoadAll(c.disabledSkills);
     bool any = false;
     for (auto& s : list) {
@@ -66,7 +115,7 @@ void App::UpdateLastToolEvent(int msgId, int status, const std::vector<std::pair
     ++msgVersion_;
 }
 
-std::string App::RunTool(int msgId, const ToolCall& call) {
+std::string App::RunTool(int msgId, const ToolCall& call, std::string* imageB64) {
     json a = json::parse(call.argsJson.empty() ? "{}" : call.argsJson, nullptr, false);
     if (a.is_discarded() || !a.is_object()) a = json::object();
     auto str = [&](const char* k) { return a.contains(k) && a[k].is_string() ? a[k].get<std::string>() : std::string(); };
@@ -102,7 +151,75 @@ std::string App::RunTool(int msgId, const ToolCall& call) {
         UpdateLastToolEvent(msgId, res.empty() ? 2 : 1, src);
         return res.empty() ? "Não encontrei resultados (" + err + ")." : out;
     }
-    if (call.name == "open_url") {
+    static const char* kComputer[] = {"open_website", "open_app", "read_file", "list_folder", "look_at_screen", "click", "double_click",
+                                      "right_click", "click_xy", "type_text", "press_keys", "scroll", "wait"};
+    for (auto k : kComputer)
+        if (call.name == k) return RunComputerTool(msgId, call, imageB64);
+    if (call.name == "store_search") {
+        std::string q = str("query");
+        AddToolEvent(msgId, {"store", "Procurando na loja: " + q, 1, {}});
+        return store::SearchText(q);
+    }
+    if (call.name == "show_product" || call.name == "open_store") {
+        std::string id = str("id");
+        PostUi(id.empty() ? "shop" : "shop:" + id);
+        AddToolEvent(msgId, {"store", "Abrindo a loja", 1, {}});
+        return "A loja foi aberta na tela" + std::string(id.empty() ? "." : " no produto.");
+    }
+    if (call.name == "open_agenda") {
+        PostUi("agenda");
+        AddToolEvent(msgId, {"agenda", "Abrindo a agenda", 1, {}});
+        return "Agenda aberta na tela.";
+    }
+    if (call.name == "agenda_list") {
+        AddToolEvent(msgId, {"agenda", "Lendo a rotina", 1, {}});
+        return agenda::RoutineText(agenda::Load());
+    }
+    if (call.name == "agenda_free_slots") {
+        AddToolEvent(msgId, {"agenda", "Vendo horários livres", 1, {}});
+        return agenda::SlotsText(agenda::Load());
+    }
+    if (call.name == "agenda_add") {
+        agenda::Item it;
+        it.id = agenda::NewId("r");
+        it.title = str("title").empty() ? "Aula" : str("title");
+        int mask = agenda::ParseDays(str("days"));
+        for (int d = 0; d < 7; ++d) if (mask & (1 << d)) it.days.push_back(d);
+        it.start = agenda::NormTime(str("start"));
+        it.end = agenda::NormTime(str("end"));
+        if (it.days.empty() || it.start.empty()) return "Não entendi os dias ou o horário. Pergunte de novo à pessoa.";
+        if (it.end.empty() || it.end <= it.start) {
+            int h = atoi(it.start.c_str()) + 1;
+            char b[8];
+            snprintf(b, sizeof(b), "%02d:%s", std::min(h, 23), it.start.substr(3).c_str());
+            it.end = b;
+        }
+        std::string ty = text::Fold(str("type"));
+        it.type = ty.find("ocup") != std::string::npos || ty.find("compromisso") != std::string::npos ? agenda::Busy
+                : ty.find("livre") != std::string::npos ? agenda::Free : agenda::Class;
+        it.trialSpots = std::clamp(num("trial_spots", 2), 0, 20);
+        agenda::Data d = agenda::Load();
+        d.routine.push_back(it);
+        agenda::Save(d);
+        AddToolEvent(msgId, {"agenda", "Rotina: " + it.title + " · " + agenda::DaysText(it.days) + " " + it.start + "–" + it.end, 1, {}});
+        return "Salvo na rotina: " + it.title + ", " + agenda::DaysText(it.days) + ", " + it.start + " às " + it.end + ".";
+    }
+    if (call.name == "agenda_remove") {
+        agenda::Data d = agenda::Load();
+        std::string id = str("id");
+        size_t before = d.routine.size();
+        d.routine.erase(std::remove_if(d.routine.begin(), d.routine.end(), [&](const agenda::Item& x) { return x.id == id; }), d.routine.end());
+        agenda::Save(d);
+        AddToolEvent(msgId, {"agenda", "Removendo da rotina", d.routine.size() < before ? 1 : 2, {}});
+        return d.routine.size() < before ? "Removido." : "Não achei esse item.";
+    }
+    if (call.name == "agenda_book_trial") {
+        std::string err;
+        std::string id = RequestTrial(str("name"), str("phone"), str("slot_key"), "kb", &err);
+        AddToolEvent(msgId, {"agenda", id.empty() ? "Horário indisponível" : "Pedido de aula enviado para confirmação", id.empty() ? 2 : 1, {}});
+        return id.empty() ? "Não deu: " + err : "Pedido criado; aparece um cartão no notebook para a treinadora confirmar.";
+    }
+    if (call.name == "read_page" || call.name == "open_url") {
         std::string url = str("url");
         std::string host = url;
         size_t s = host.find("://");

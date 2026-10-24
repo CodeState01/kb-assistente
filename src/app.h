@@ -12,11 +12,13 @@
 #include "net/mobile_server.h"
 #include "net/tunnel.h"
 #include "core/perf.h"
+#include "agent/computer.h"
 
 #include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -50,6 +52,15 @@ struct Message {
     float appear = 0.f;
     size_t parsedLen = (size_t)-1;
     std::vector<Block> blocks;
+};
+
+// Pedido de permissão mostrado num cartão sempre visível (mesmo com o KB minimizado).
+struct PermissionReq {
+    int id = 0;
+    int kind = 0;            // 0 controlar o computador, 1 aula experimental, 2 outro
+    std::string title, detail, okLabel = "Permitir", noLabel = "Negar", ref;
+    int answer = -1;         // -1 aguardando, 0 negado, 1 permitido
+    double time = 0;
 };
 
 struct Toast {
@@ -176,6 +187,27 @@ public:
     void Say(const std::string& text) { if (tts_ && !silent_) tts_->Speak(text); }
     std::atomic<int> requestTimer{0};   // 1 = abrir o painel, 2 = abrir e iniciar
 
+    // ---- Permissões (controle do PC, aulas experimentais)
+    int AskPermission(PermissionReq r);                 // não bloqueia; devolve o id
+    int WaitPermission(int id, double timeoutSec);      // bloqueia a thread de trabalho até a resposta (-1 = expirou)
+    std::vector<PermissionReq> PendingPermissions();
+    void AnswerPermission(int id, int answer);
+
+    // ---- Controle do computador pela IA
+    bool ComputerActive() const { return computerActive_.load(); }
+    std::string ComputerStatus() { std::lock_guard<std::mutex> l(compMtx_); return computerStatus_; }
+    void StopComputer();
+    std::atomic<bool> requestMinimizeMain{false};
+
+    // ---- Agenda
+    std::string AgendaLink();                           // endereço público da página de agendamento (vazio se desligado)
+    std::string RequestTrial(const std::string& name, const std::string& phone, const std::string& slotKey,
+                             const std::string& source, std::string* err);
+
+    // ---- Pedidos para a interface ("shop", "shop:<id>", "agenda", "panel:<aba>")
+    void PostUi(const std::string& what) { std::lock_guard<std::mutex> l(uiReqMtx_); uiReqs_.push_back(what); }
+    std::vector<std::string> TakeUi() { std::lock_guard<std::mutex> l(uiReqMtx_); auto v = std::move(uiReqs_); uiReqs_.clear(); return v; }
+
     // ---- Janela
     std::atomic<bool> requestShowMain{false};
     std::atomic<bool> requestQuit{false};
@@ -255,7 +287,7 @@ private:
     // ferramentas da IA (app_tools.cpp)
     std::string ToolsJson();
     std::string ToolsPrompt();
-    std::string RunTool(int msgId, const ToolCall& call);
+    std::string RunTool(int msgId, const ToolCall& call, std::string* imageB64 = nullptr);
     void AddToolEvent(int msgId, const ToolEvent& ev);
     void UpdateLastToolEvent(int msgId, int status, const std::vector<std::pair<std::string, std::string>>& sources);
     bool ModelHasTools(const std::string& name);
@@ -268,6 +300,36 @@ private:
     int dlgStep_ = 0, dlgRounds_ = 3, dlgRoundSec_ = 180;
     std::string dlgName_;
     std::atomic<bool> autoListen_{false};
+    std::mutex uiReqMtx_;
+    std::vector<std::string> uiReqs_;
+
+    // permissões
+    std::mutex permMtx_;
+    std::condition_variable permCv_;
+    std::vector<PermissionReq> perms_;
+    int nextPerm_ = 1;
+    // controle do computador
+    std::atomic<bool> computerActive_{false}, computerGranted_{false};
+    std::mutex compMtx_;
+    std::string computerStatus_, currentQuery_;
+    computer::Snapshot lastSnap_;
+    bool lastModelVision_ = false;
+    void SetComputerStatus(const std::string& s) { std::lock_guard<std::mutex> l(compMtx_); computerStatus_ = s; }
+    bool EnsureComputerPermission(int msgId);
+    std::string RunComputerTool(int msgId, const ToolCall& call, std::string* imageB64);
+    // página pública de agendamento
+    bool PublicRoute(const std::string& method, const std::string& path, const std::string& target, const std::string& body,
+                     int* code, std::string* ctype, std::string* out);
+    struct PublicSession {
+        std::vector<ChatMsg> msgs;                         // histórico para o modelo
+        std::vector<std::pair<bool, std::string>> shown;   // (é do visitante?, texto)
+        bool busy = false;
+        double last = 0;
+        std::string bookingId;
+    };
+    std::mutex pubMtx_;
+    std::map<std::string, PublicSession> pub_;
+    void PublicChatReply(const std::string& sid);
 };
 
 double NowSeconds();

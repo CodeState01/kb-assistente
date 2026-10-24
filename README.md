@@ -21,6 +21,11 @@ flutuantes nativas.
 | **Skills** | Instruções em arquivos `.md` (em `%APPDATA%\KB\skills`) que a IA carrega quando o pedido combina; dá para ativar, editar e criar pelo Painel |
 | **Visão** | Anexe imagens ou transmita ao vivo **uma tela ou uma janela específica**, escolhida num seletor com miniaturas |
 | **Timer de Muay Thai** | Placar grande por fase (preparar, luta, descanso), rounds, aviso dos últimos segundos, vários sinais (sino, gongo, apito…), treinos salvos e "KB, criar treino" por voz |
+| **Loja KB** | Vitrine de equipamentos de Muay Thai (luvas, bandagens, caneleiras… da Maximum) com fotos, tamanhos e "comprar" que abre o carrinho da loja já com o tamanho; produtos da própria KB (shorts, camisetas, tops) vendidos pelo WhatsApp com **cupons de desconto** |
+| **Agenda** | Rotina semanal (aulas, compromissos, horários livres) montada por conversa ("KB, minha rotina: segunda, quarta e sexta…"); pedidos de **aula experimental** com confirmação em um clique e aviso pelo WhatsApp |
+| **Agendamento online** | Página `/agendar` (pelo túnel da Cloudflare) onde qualquer pessoa vê os horários livres, conversa com a assistente e pede a aula; cada pedido vira um cartão no notebook (Confirmar / Recusar) e a página mostra a resposta na hora |
+| **Controle do PC** | Com sua permissão, a IA vê os controles da janela ativa e usa mouse e teclado (clicar, digitar, atalhos, rolar, abrir apps e sites). Aviso na tela o tempo todo; **Esc** para na hora; nunca digita senhas ou cartões |
+| **Sons e visual** | Sons sintetizados em toda a interface (passar o mouse, cliques, janelas, avisos — dá para desligar em Geral), ícones novos e iluminação de fundo |
 | **Sistema** | Inicia com o Windows (minimizada na bandeja), orb flutuante quando minimizada, atalho global (padrão **Ctrl+Shift+Espaço**), palavra de ativação opcional ("KB, que horas são?"), instância única |
 
 ## Compilar
@@ -65,12 +70,19 @@ src/
   net/http.*            WinHTTP com streaming e downloads
   net/web.*             pesquisa (DuckDuckGo) e leitura de páginas para a IA
   core/skills.*         skills em .md com frontmatter (name, description)
-  app_tools.cpp         ferramentas que a IA pode chamar (pesquisa, skills, treinos, timer)
+  app_tools.cpp         ferramentas que a IA pode chamar (pesquisa, skills, treinos, timer, agenda, controle do PC)
+  app_agent.cpp         permissões, agenda, página pública /agendar e controle do computador
+  agent/computer.*      UI Automation, mouse suave, teclado Unicode, atalhos
+  features/store.*      loja (catálogo embutido res/loja.json + produtos e cupons da KB)
+  features/agenda.*     rotina semanal, horários livres e pedidos de aula experimental
+  audio/sfx.*           sons da interface (sintetizados, mixer próprio)
   media/screen.*        transmissão de tela/janela (DXGI, GDI, PrintWindow)
   ui/orb.*              o orb animado (gradientes radiais, blobs deformados por ruído, partículas)
   ui/embeds.*, blocks.* parser de markdown + cartões visuais + janelas flutuantes
   ui/views.*            telas: título, barra lateral, conversa, modelos, configurações, mini-orb
   ui/anim.*, widgets.*  sistema de animação (molas, easing) e componentes (toggle, botões, chips)
+  ui/shop.cpp, agenda_ui.cpp, overlays.cpp   loja, agenda e cartões de permissão sempre visíveis
+res/agendar.html        página pública de agendamento (celular)
 ```
 
 Dados do usuário (config, layout, modelos de voz) ficam em `%APPDATA%\KB`.
@@ -80,4 +92,7 @@ Dados do usuário (config, layout, modelos de voz) ficam em `%APPDATA%\KB`.
 Variáveis de ambiente úteis para testes automatizados:
 `KB_SNAPSHOT=arquivo.bmp` (salva um print do framebuffer e de cada janela flutuante, sem fala),
 `KB_SNAPSHOT_FRAME=150`, `KB_SNAPSHOT_EXIT=1`, `KB_DEMO=1` (conversa de exemplo),
-`KB_MODE=0..6` (força um estado do orb), `KB_ASK="pergunta"`, `KB_POPOUT=1`.
+`KB_MODE=0..6` (força um estado do orb), `KB_ASK="pergunta"`, `KB_POPOUT=1`,
+`KB_FOCUS=timer|shop|shop:<id>|shopkb|shopadmin|agenda|agenda:1|agenda:2|perm|share|general|models|voice|mobile|skills|embeds`
+(abre direto numa tela), `KB_TEST_DATA=<pasta>` (agenda e loja numa pasta de teste, sem tocar nos dados reais),
+`KB_AGENDA_PUBLIC=1` (liga a página /agendar só nesta sessão, sem gravar na config).

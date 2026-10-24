@@ -8,6 +8,8 @@
 #include "ui/widgets.h"
 #include "ui/assets.h"
 #include "ui/timer.h"
+#include "audio/sfx.h"
+#include "ui/shared.h"
 #include "core/skills.h"
 #include "core/install.h"
 #include "net/tunnel.h"
@@ -37,7 +39,7 @@ TitleBarInfo g_title;
 OrbMode g_mode = OrbMode::Idle;
 char g_input[4096] = "";
 bool g_inputFocused = false;
-bool g_showPanel = false, g_showTimer = false;
+bool g_showPanel = false, g_showTimer = false, g_showShop = false, g_showAgenda = false;
 float g_splashT = -1.f;
 void OpenPanel(int tab);   // animação de abertura (-1 = ainda não começou)
 int g_sel = 0;
@@ -199,7 +201,7 @@ bool Segmented(const char* id, int* v, const char* const* labels, int n) {
     for (int i = 0; i < n; ++i) {
         ImGui::SetCursorScreenPos(ImVec2(p.x + i * sw, p.y));
         ImGui::PushID(i);
-        if (ImGui::InvisibleButton("seg", ImVec2(sw, h))) { *v = i; changed = true; }
+        if (ImGui::InvisibleButton("seg", ImVec2(sw, h)) && *v != i) { *v = i; changed = true; sfx::Play(sfx::Tab); }
         float hov = anim::To(ImGui::GetItemID(), ImGui::IsItemHovered() ? 1.f : 0.f, 12.f);
         ImGui::PopID();
         ImVec2 ts = ImGui::CalcTextSize(labels[i]);
@@ -396,6 +398,8 @@ void Sidebar(App& app, ImGuiViewport* vp, float top, float wdt) {
         {Icon::Chat, "Conversa", kChat, nullptr},
         {Icon::Gear, "Painel: configurações, modelos de IA, voz, skills e itens", "Painel do KB###panel", &g_showPanel},
         {Icon::Clock, "Timer de rounds (Muay Thai)", "Timer###timer2", &g_showTimer},
+        {Icon::Bag, "Loja: produtos da KB e equipamentos de Muay Thai", "Loja KB###shop", &g_showShop},
+        {Icon::Calendar, "Agenda: rotina, horários livres e aulas experimentais", "Agenda###agenda", &g_showAgenda},
     };
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float bs = px(44);
@@ -1734,6 +1738,18 @@ void SettingsContent(App& app, int part) {
         ImGui::EndCombo();
     }
 
+    w::SectionTitle("Sons da interface", Icon::Volume);
+    ch |= w::Toggle("Efeitos sonoros", &g_edit.sfx, "Cliques, abrir e fechar janelas, mensagens, avisos e pedidos de permissão.");
+    if (g_edit.sfx) {
+        ch |= w::Toggle("   Tique ao passar o mouse", &g_edit.sfxHover);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::SliderInt("##sfxvol", &g_edit.sfxVolume, 0, 100, "Volume dos efeitos: %d%%");
+        if (ImGui::IsItemDeactivatedAfterEdit()) { ch = true; sfx::SetVolume(g_edit.sfxVolume); sfx::Play(sfx::Notify); }
+    }
+
+    w::SectionTitle("Controle do computador", Icon::Cursor);
+    ch |= w::Toggle("Deixar a IA usar o mouse, o teclado e o navegador", &g_edit.computerControl,
+                    "Para tarefas como abrir o YouTube, trocar de conta do Gmail ou preencher um site. Ela sempre pede permissão antes de começar; Esc para na hora.");
     }
     if (part == 2) {
     w::SectionTitle("Fala", Icon::Wave);
@@ -1953,7 +1969,7 @@ void PanelWindow(App& app) {
         float wdt = ts.x + px(22);
         ImGui::SetCursorScreenPos(ImVec2(x, p.y));
         ImGui::PushID(i);
-        if (ImGui::InvisibleButton("##tab", ImVec2(wdt, h))) g_panelTab = i;
+        if (ImGui::InvisibleButton("##tab", ImVec2(wdt, h)) && g_panelTab != i) { g_panelTab = i; sfx::Play(sfx::Tab); }
         bool hov = ImGui::IsItemHovered();
         ImGui::PopID();
         ImVec4 c = g_panelTab == i ? theme::Text : hov ? theme::Text : theme::TextDim;
@@ -2168,6 +2184,7 @@ void Splash(ImGuiViewport* vp) {
 } // namespace
 
 void Init(App& app, float scale) {
+    w::g_toggleSound = [](bool on) { sfx::Play(on ? sfx::ToggleOn : sfx::ToggleOff); };
     theme::Load(scale);
     assets::Load();
     g_edit = app.Cfg();
@@ -2200,6 +2217,19 @@ void Frame(App& app, bool mainVisible) {
         g_focusNext = "Timer###timer2";
         if (rt == 2) timer::StartNow(app);
     }
+    for (auto& r : app.TakeUi()) {
+        if (r == "shop" || text::StartsWith(r, "shop:")) {
+            g_showShop = true;
+            g_focusNext = "Loja KB###shop";
+            if (r.size() > 5) ShopShowProduct(r.substr(5));
+        } else if (r == "agenda") {
+            g_showAgenda = true;
+            g_focusNext = "Agenda###agenda";
+        } else if (text::StartsWith(r, "panel:")) {
+            OpenPanel(atoi(r.c_str() + 6));
+        }
+        app.requestShowMain = true;
+    }
     Config cfg = app.Cfg();
     anim::SetReduceMotion(cfg.reduceMotion);
     SetBackdropPhoto(cfg.bgImage, ImGui::IsAnyItemActive() ? g_edit.bgOpacity : cfg.bgOpacity);
@@ -2210,6 +2240,27 @@ void Frame(App& app, bool mainVisible) {
     if (focusTest > 0 && --focusTest == 0) {
         if (const char* ft = getenv("KB_FOCUS")) {
             static std::string name = ft;
+            if (name == "shop") { g_showShop = true; g_focusNext = "Loja KB###shop"; }
+            if (name == "shopadmin" || name == "shopkb") { g_showShop = true; g_focusNext = "Loja KB###shop"; ShopTestView(name == "shopadmin", name == "shopkb" ? 1 : 0); }
+            if (name.rfind("shop:", 0) == 0) { g_showShop = true; ShopShowProduct(name.substr(5)); }
+            if (name.rfind("agenda", 0) == 0) {
+                if (name.size() > 7) AgendaSetTab(name[7] - '0');
+                g_showAgenda = true; g_focusNext = "Agenda###agenda";
+            }
+            if (name == "perm") {
+                PermissionReq r;
+                r.kind = 1; r.title = "Aula experimental"; r.ref = "teste";
+                r.detail = "Maria Souza ((11) 98765-4321) quer fazer aula experimental de Muay Thai adulto — seg, 27/10 às 19:00.";
+                r.okLabel = "Confirmar aula"; r.noLabel = "Recusar";
+                app.AskPermission(r);
+                PermissionReq c;
+                c.kind = 0; c.title = "O KB quer usar o mouse e o teclado";
+                c.detail = "Para: \"abre o YouTube e procura treino de Muay Thai\". Você pode parar a qualquer momento com Esc.";
+                c.okLabel = "Permitir nesta tarefa";
+                app.AskPermission(c);
+            }
+            if (name == "perm") name = "share-none";
+            if (name.rfind("shop", 0) == 0 || name.rfind("agenda", 0) == 0) name = "share-none";
             if (name == "share" || name == "sharewin") OpenSharePicker();
             if (name == "sharewin") g_pickTab = 1;
             if (name == "timerrun") { name = "timer"; timer::StartNow(app); }
@@ -2229,6 +2280,14 @@ void Frame(App& app, bool mainVisible) {
         Host(app);
         ChatWindow(app);
         if (g_showPanel) PanelWindow(app);
+        if (g_showShop) {
+            PlaceFloating(ImVec2(px(1040), px(820)), 2);
+            ShopWindow(app, &g_showShop);
+        }
+        if (g_showAgenda) {
+            PlaceFloating(ImVec2(px(900), px(800)), 3);
+            AgendaWindow(app, &g_showAgenda);
+        }
         if (g_showTimer) {
             PlaceFloating(ImVec2(px(520), px(820)), 1);
             timer::Window(app, &g_showTimer);
@@ -2238,6 +2297,8 @@ void Frame(App& app, bool mainVisible) {
         Toasts(app);
         if (cfg.splash && (GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) == 0 || GetEnvironmentVariableW(L"KB_SPLASH", nullptr, 0) > 0)) Splash(vp);
     }
+    PermissionPopups(app);
+    ComputerOverlay(app);
     static int popTest = GetEnvironmentVariableW(L"KB_POPOUT", nullptr, 0) > 0 ? 30 : -1;
     if (popTest > 0 && --popTest == 0) {
         std::lock_guard<std::mutex> l(app.MessagesMutex());
@@ -2247,6 +2308,21 @@ void Frame(App& app, bool mainVisible) {
     }
     if (cfg.showMiniOrb && !mainVisible) MiniOrb(app);
     RenderFloatingEmbeds();
+    // sons: abrir/fechar janelas e cliques/hover em qualquer controle
+    {
+        static bool prev[4] = {false, false, false, false};
+        bool cur[4] = {g_showPanel, g_showTimer, g_showShop, g_showAgenda};
+        for (int i = 0; i < 4; ++i)
+            if (cur[i] != prev[i]) { sfx::Play(cur[i] ? sfx::Open : sfx::Close, 0.8f); prev[i] = cur[i]; }
+    }
+    sfx::UiFrame();
 }
+
+// ---- peças compartilhadas com as outras telas (shared.h)
+ImTextureID PictureTexture(const PicturePtr& p) { return TextureFor(p); }
+void FloatingWindowSetup(ImVec2 size, int slot) { PlaceFloating(size, slot); }
+bool SegmentedTabs(const char* id, int* v, const char* const* labels, int n) { return Segmented(id, v, labels, n); }
+void FieldLabel(const char* t) { Label(t); }
+void DrawQrCode(const std::string& d, float size) { DrawQr(d, size); }
 
 } // namespace ui

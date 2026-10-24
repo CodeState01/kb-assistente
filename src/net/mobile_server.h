@@ -12,6 +12,10 @@ struct MobileHooks {
     std::function<void(const std::string& text, const std::string& jpegB64)> send;
     std::function<void()> listen;                                             // ouvir pelo microfone do PC
     std::function<void()> stop;                                               // interromper
+    // Rotas públicas (sem token), ex.: página de agendamento de aula experimental em /agendar.
+    // Devolve true se tratou a requisição.
+    std::function<bool(const std::string& method, const std::string& path, const std::string& target, const std::string& body,
+                       int* code, std::string* ctype, std::string* out)> publicRoute;
 };
 
 class MobileServer {

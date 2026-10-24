@@ -270,6 +270,9 @@ bool OllamaPull(const std::string& baseUrl, const std::string& model, const Pull
 std::string ThinkFilter::Feed(const std::string& in, std::string* think) {
     std::string out;
     pending_ += in;
+    // mistral-nemo às vezes escreve o marcador de ferramenta no texto
+    static const char kTc[] = "[TOOL_CALLS]";
+    for (size_t p; (p = pending_.find(kTc)) != std::string::npos;) pending_.erase(p, sizeof(kTc) - 1);
     for (;;) {
         const char* tag = inThink_ ? "</think>" : "<think>";
         size_t tagLen = inThink_ ? 8 : 7;
@@ -285,6 +288,8 @@ std::string ThinkFilter::Feed(const std::string& in, std::string* think) {
         size_t keep = 0;
         for (size_t k = 1; k < tagLen && k <= pending_.size(); ++k)
             if (pending_.compare(pending_.size() - k, k, tag, k) == 0) keep = k;
+        for (size_t k = 1; k < sizeof(kTc) - 1 && k <= pending_.size(); ++k)
+            if (k > keep && pending_.compare(pending_.size() - k, k, kTc, k) == 0) keep = k;
         if (!inThink_) out += pending_.substr(0, pending_.size() - keep);
         else if (think) *think += pending_.substr(0, pending_.size() - keep);
         pending_.erase(0, pending_.size() - keep);

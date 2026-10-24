@@ -71,13 +71,22 @@ struct Config {
     int timerStartSound = 0, timerEndSound = 0, timerWarnSound = 6;
     bool timerVoice = true;
     int timerVolume = 40;                  // volume dos sinais (0-100)
+    // sons da interface
+    bool sfx = true;
+    int sfxVolume = 50;
+    bool sfxHover = true;
+    // controle do computador pela IA (mouse, teclado, apps, navegador)
+    bool computerControl = true;
+    // agenda: receber pedidos de aula experimental pela internet (link público)
+    bool agendaPublic = false;
     std::vector<std::string> workouts;     // treinos salvos: "nome|rounds|segundos|descanso"
 
     bool firstRun = true;
 };
 
 namespace config {
-std::string AppDataDir();            // %APPDATA%\KB (UTF-8)
+std::string AppDataDir();
+std::string UserDataDir();           // agenda e loja (pasta de teste com KB_TEST_DATA)            // %APPDATA%\KB (UTF-8)
 std::string ModelsDir();             // %APPDATA%\KB\models
 std::string ConfigPath();
 bool Load(Config& out);

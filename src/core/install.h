@@ -4,7 +4,7 @@
 // Instalação "por usuário" (sem precisar de administrador): %LOCALAPPDATA%\Programs\KB
 namespace install {
 
-constexpr const char* kVersion = "1.6.0";
+constexpr const char* kVersion = "1.7.0";
 
 std::wstring InstallDir();
 std::wstring InstalledExe();

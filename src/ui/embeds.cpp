@@ -525,7 +525,6 @@ static float g_photoOpacity = 0.45f;
 void SetBackdropPhoto(bool on, float opacity) { g_photoOn = on; g_photoOpacity = opacity; }
 
 void DrawBackdrop(ImDrawList* dl, ImVec2 a, ImVec2 b, ImVec4 accent, bool particles) {
-    (void)accent;
     float t = anim::Time() * (anim::ReduceMotion() ? 0.2f : 1.f);
     ImU32 top = anim::Col(theme::Bg), bot = anim::Col(theme::Bg2);
     dl->AddRectFilledMultiColor(a, b, top, top, bot, bot);
@@ -550,6 +549,22 @@ void DrawBackdrop(ImDrawList* dl, ImVec2 a, ImVec2 b, ImVec4 accent, bool partic
         dl->AddRectFilled(a, b, anim::Col(theme::Bg, 0.30f));
         dl->AddRectFilledMultiColor(ImVec2(a.x, b.y - (b.y - a.y) * 0.45f), b, clear, clear, anim::Col(theme::Bg, 0.92f), anim::Col(theme::Bg, 0.92f));
     }
+    // ---- iluminação de estúdio: luz principal azul (cima/esquerda), contraluz vermelha (baixo/direita),
+    // luz da cor do KB no centro e vinheta nas bordas
+    float W = b.x - a.x, H = b.y - a.y, R = std::max(W, H);
+    float drift = std::sin(t * 0.07f);
+    orbfx::RadialGradient(dl, ImVec2(a.x + W * (0.10f + 0.04f * drift), a.y - H * 0.08f), 0, R * 0.8f,
+                          anim::Col(anim::WithAlpha(theme::Cyan, 0.11f)), anim::Col(anim::WithAlpha(theme::Cyan, 0.f)), 72);
+    orbfx::RadialGradient(dl, ImVec2(b.x - W * (0.04f - 0.03f * drift), b.y + H * 0.06f), 0, R * 0.62f,
+                          anim::Col(anim::WithAlpha(theme::Red, 0.075f)), anim::Col(anim::WithAlpha(theme::Red, 0.f)), 72);
+    if (particles && accent.w > 0)
+        orbfx::RadialGradient(dl, ImVec2(a.x + W * 0.52f, a.y + H * 0.36f), 0, R * 0.42f,
+                              anim::Col(anim::WithAlpha(accent, 0.06f)), anim::Col(anim::WithAlpha(accent, 0.f)), 64);
+    ImU32 vin = anim::Col(ImVec4(0, 0, 0, 0.38f)), none = anim::Col(ImVec4(0, 0, 0, 0));
+    float vw = std::min(W, H) * 0.16f;
+    dl->AddRectFilledMultiColor(a, ImVec2(a.x + vw, b.y), vin, none, none, vin);
+    dl->AddRectFilledMultiColor(ImVec2(b.x - vw, a.y), b, none, vin, vin, none);
+    dl->AddRectFilledMultiColor(ImVec2(a.x, b.y - vw), b, none, none, vin, vin);
 }
 
 } // namespace ui

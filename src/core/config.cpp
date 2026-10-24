@@ -36,6 +36,17 @@ std::string ModelsDir() {
     return d;
 }
 
+// Agenda e loja: KB_TEST_DATA aponta para uma pasta separada nos testes (não mexe nos dados reais).
+std::string UserDataDir() {
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"KB_TEST_DATA", buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        CreateDirectoryW(buf, nullptr);
+        return text::Narrow(buf);
+    }
+    return AppDataDir();
+}
+
 std::string ConfigPath() { return AppDataDir() + "\\config.json"; }
 
 std::string DefaultSystemPrompt() {
@@ -74,7 +85,7 @@ bool Load(Config& c) {
     GET(mobileEnabled) GET(mobileMode) GET(mobilePort) GET(mobileToken) GET(screenIntervalMs) GET(autoVisionModel)
     GET(showPerf) GET(bgImage) GET(bgOpacity) GET(showThinking) GET(splash)
     GET(timerRounds) GET(timerRoundSec) GET(timerRestSec) GET(timerPrepSec) GET(timerWarnSec)
-    GET(timerStartSound) GET(timerEndSound) GET(timerWarnSound) GET(timerVoice) GET(timerVolume) GET(workouts) GET(webTools) GET(disabledSkills)
+    GET(timerStartSound) GET(timerEndSound) GET(timerWarnSound) GET(timerVoice) GET(timerVolume) GET(workouts) GET(webTools) GET(disabledSkills) GET(sfx) GET(sfxVolume) GET(sfxHover) GET(computerControl) GET(agendaPublic)
     // migração da versão "Aurora"
     size_t p = c.whisperModel.find("\\Aurora\\");
     if (p != std::string::npos) c.whisperModel.replace(p, 8, "\\KB\\");
@@ -97,7 +108,7 @@ bool Save(const Config& c) {
     PUT(mobileEnabled) PUT(mobileMode) PUT(mobilePort) PUT(mobileToken) PUT(screenIntervalMs) PUT(autoVisionModel)
     PUT(showPerf) PUT(bgImage) PUT(bgOpacity) PUT(showThinking) PUT(splash)
     PUT(timerRounds) PUT(timerRoundSec) PUT(timerRestSec) PUT(timerPrepSec) PUT(timerWarnSec)
-    PUT(timerStartSound) PUT(timerEndSound) PUT(timerWarnSound) PUT(timerVoice) PUT(timerVolume) PUT(workouts) PUT(webTools) PUT(disabledSkills)
+    PUT(timerStartSound) PUT(timerEndSound) PUT(timerWarnSound) PUT(timerVoice) PUT(timerVolume) PUT(workouts) PUT(webTools) PUT(disabledSkills) PUT(sfx) PUT(sfxVolume) PUT(sfxHover) PUT(computerControl) PUT(agendaPublic)
     std::wstring tmp = text::Widen(ConfigPath() + ".tmp");
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);

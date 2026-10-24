@@ -98,6 +98,7 @@ add_executable(KB WIN32
   src/audio/audio_capture.cpp
   src/audio/stt_whisper.cpp
   src/audio/tts_sapi.cpp
+  src/audio/sfx.cpp
   src/media/image.cpp
   src/media/screen.cpp
   src/ui/theme.cpp
@@ -109,16 +110,24 @@ add_executable(KB WIN32
   src/ui/views.cpp
   src/ui/assets.cpp
   src/ui/timer.cpp
+  src/ui/shop.cpp
+  src/ui/agenda_ui.cpp
+  src/ui/overlays.cpp
+  src/features/agenda.cpp
+  src/agent/computer.cpp
+  src/app_agent.cpp
+  src/features/store.cpp
   src/core/perf.cpp
   third_party/qrcodegen.cpp
   res/kb.rc)
 target_include_directories(KB PRIVATE src third_party ${miniaudio_SOURCE_DIR})
 target_compile_definitions(KB PRIVATE ${KB_DEFS})
-target_compile_options(KB PRIVATE ${KB_OPTS})
-set_source_files_properties(res/kb.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/res/mobile.html;${CMAKE_SOURCE_DIR}/res/kb.ico;${CMAKE_SOURCE_DIR}/res/bg.jpg;${CMAKE_SOURCE_DIR}/res/logo.png")
+target_compile_options(KB PRIVATE ${KB_OPTS} /Zi)
+target_link_options(KB PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+set_source_files_properties(res/kb.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/res/mobile.html;${CMAKE_SOURCE_DIR}/res/kb.ico;${CMAKE_SOURCE_DIR}/res/bg.jpg;${CMAKE_SOURCE_DIR}/res/logo.png;${CMAKE_SOURCE_DIR}/res/loja.json;${CMAKE_SOURCE_DIR}/res/agendar.html")
 target_link_libraries(KB PRIVATE
   imgui whisper nlohmann_json::nlohmann_json
-  winhttp sapi ole32 oleaut32 dwmapi shell32 winmm advapi32 user32 gdi32 comdlg32
+  winhttp sapi ole32 oleaut32 dwmapi dbghelp shell32 winmm advapi32 user32 gdi32 comdlg32
   d3d11 dxgi ws2_32 iphlpapi bcrypt uuid pdh)
 set_target_properties(KB PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 

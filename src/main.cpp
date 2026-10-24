@@ -225,7 +225,44 @@ std::wstring Env(const wchar_t* name) {
 }
 } // namespace
 
+
+// ------------------------------------------------------------------ Relatório de falha
+// Se o KB cair, grava a pilha em %APPDATA%\KB\crash.txt (ajuda a corrigir sem precisar de depurador).
+#include <dbghelp.h>
+static LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
+    wchar_t path[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"APPDATA", path, MAX_PATH);
+    if (!n) return EXCEPTION_CONTINUE_SEARCH;
+    wcscat_s(path, L"\\KB\\crash.txt");
+    FILE* f = _wfopen(path, L"w");
+    if (!f) return EXCEPTION_CONTINUE_SEARCH;
+    HANDLE proc = GetCurrentProcess(), th = GetCurrentThread();
+    SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
+    SymInitialize(proc, nullptr, TRUE);
+    fprintf(f, "codigo %08lx endereco %p\n", ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
+    CONTEXT ctx = *ep->ContextRecord;
+    STACKFRAME64 sf{};
+    sf.AddrPC.Offset = ctx.Rip; sf.AddrPC.Mode = AddrModeFlat;
+    sf.AddrFrame.Offset = ctx.Rbp; sf.AddrFrame.Mode = AddrModeFlat;
+    sf.AddrStack.Offset = ctx.Rsp; sf.AddrStack.Mode = AddrModeFlat;
+    for (int i = 0; i < 32 && StackWalk64(IMAGE_FILE_MACHINE_AMD64, proc, th, &sf, &ctx, nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr); ++i) {
+        char buf[sizeof(SYMBOL_INFO) + 256] = {};
+        auto* sym = (SYMBOL_INFO*)buf;
+        sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen = 255;
+        DWORD64 disp = 0;
+        IMAGEHLP_LINE64 line{sizeof(line)};
+        DWORD ld = 0;
+        bool hasSym = SymFromAddr(proc, sf.AddrPC.Offset, &disp, sym) != FALSE;
+        bool hasLine = SymGetLineFromAddr64(proc, sf.AddrPC.Offset, &ld, &line) != FALSE;
+        fprintf(f, "%2d %s  %s:%lu\n", i, hasSym ? sym->Name : "?", hasLine ? line.FileName : "", hasLine ? line.LineNumber : 0);
+    }
+    fclose(f);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
+    SetUnhandledExceptionFilter(CrashFilter);
     bool startMin = cmdLine && wcsstr(cmdLine, L"--minimizado") != nullptr;
 
     if (cmdLine && wcsstr(cmdLine, L"--desinstalar")) {
@@ -333,13 +370,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
         bool visible = glfwGetWindowAttrib(g_win, GLFW_VISIBLE) && !glfwGetWindowAttrib(g_win, GLFW_ICONIFIED);
         Config c = app.Cfg();
         bool needFrames = visible || c.showMiniOrb || app.State() != AssistState::Idle || app.TtsSpeaking() ||
-                          ImGui::GetPlatformIO().Viewports.Size > 1 || ui::TimerRunning();
+                          ImGui::GetPlatformIO().Viewports.Size > 1 || ui::TimerRunning() || app.ComputerActive() ||
+                          !app.PendingPermissions().empty();
         if (needFrames) glfwPollEvents();
         else glfwWaitEventsTimeout(0.25);
 
         if (app.TakeHotkeyDirty()) RegisterHotkey(c);
         app.Update();
         if (app.requestShowMain.exchange(false)) ShowMain();
+        if (app.requestMinimizeMain.exchange(false)) glfwIconifyWindow(g_win);
         if (app.requestQuit.exchange(false)) g_quit = true;
         ui::WindowRequests& rq = ui::Requests();
         if (rq.minimize) { rq.minimize = false; glfwIconifyWindow(g_win); }

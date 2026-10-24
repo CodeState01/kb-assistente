@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<link rel="icon" href="/logo.png">
+<link rel="apple-touch-icon" href="/logo.png">
+<title>Aula experimental · KB Muay Thai</title>
+<style>
+:root{--bg:#0b0c0f;--bg2:#111318;--card:#15181e;--line:#ffffff12;--tx:#eef1f6;--dim:#a2a9b8;--faint:#6c7383;--blue:#2e90ff;--red:#e63946;--green:#2ecc71;--amber:#ffb84d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif}
+body:before{content:"";position:fixed;inset:-30%;z-index:-1;background:radial-gradient(40% 30% at 15% 8%,#2e90ff1f,transparent),radial-gradient(35% 30% at 90% 85%,#e6394619,transparent);animation:drift 20s ease-in-out infinite alternate;pointer-events:none}
+@keyframes drift{to{transform:translate(4%,3%) rotate(5deg)}}
+main{max-width:560px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+header img{width:52px;height:52px;border-radius:50%;box-shadow:0 0 0 2px #2e90ff55,0 0 24px #2e90ff44}
+header b{display:block;font-size:19px;letter-spacing:.2px}
+header span{color:var(--dim);font-size:13px}
+.hero{position:relative;overflow:hidden;border-radius:18px;padding:22px 20px;margin-bottom:22px;background:linear-gradient(135deg,#1a1d24,#121419);border:1px solid var(--line)}
+.hero:after{content:"";position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,#e6394633,transparent 70%)}
+.hero h1{margin:0 0 6px;font-size:24px;line-height:1.2}
+.hero h1 em{font-style:normal;color:var(--red)}
+.hero p{margin:0;color:var(--dim);font-size:15px}
+h2{display:flex;align-items:center;gap:8px;margin:26px 0 12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-weight:600}
+h2:before{content:"";width:3px;height:14px;border-radius:2px;background:var(--blue)}
+.days{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 12px;margin:0 -16px;padding-left:16px;padding-right:16px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{flex:none;min-width:64px;padding:9px 10px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--dim);font:inherit;font-size:13px;text-align:center;cursor:pointer;line-height:1.25}
+.day b{display:block;font-size:17px;color:var(--tx)}
+.day.sel{border-color:var(--blue);background:#2e90ff1f;color:#cfe3ff}
+.day span{display:block;font-size:11px;color:var(--faint)}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.slot{text-align:left;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--tx);font:inherit;cursor:pointer;transition:.15s}
+.slot b{display:block;font-size:18px}
+.slot small{display:block;color:var(--dim);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot:hover{border-color:#2e90ff66}
+.slot.sel{background:linear-gradient(135deg,#2e90ff,#1f6fd1);border-color:transparent;box-shadow:0 6px 22px #2e90ff55}
+.slot.sel small{color:#e6f0ff}
+.empty{padding:18px;border-radius:14px;background:var(--card);border:1px solid var(--line);color:var(--dim);text-align:center}
+.card{border-radius:16px;background:var(--card);border:1px solid var(--line);padding:18px}
+label{display:block;font-size:13px;color:var(--dim);margin:12px 0 6px}
+input{width:100%;padding:13px 14px;border-radius:11px;border:1px solid var(--line);background:#0e1014;color:var(--tx);font:inherit;outline:none}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px #2e90ff33}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:16px;padding:14px;border:0;border-radius:12px;font-family:inherit;font-size:16px;font-weight:600;line-height:1;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--red),#c22b37);box-shadow:0 8px 24px #e6394644;text-decoration:none}
+.btn:disabled{opacity:.45;box-shadow:none;cursor:default}
+.btn.ghost{background:transparent;border:1px solid var(--line);box-shadow:none;color:var(--dim)}
+.picked{color:var(--dim);font-size:14px}
+.picked b{color:var(--tx)}
+.err{color:#ff8a93;font-size:14px;margin-top:10px;min-height:1px}
+.status{text-align:center;padding:26px 18px}
+.status .ic{width:64px;height:64px;margin:0 auto 12px;border-radius:50%;display:grid;place-items:center;font-size:30px}
+.status h3{margin:0 0 6px;font-size:20px}
+.status p{margin:0;color:var(--dim)}
+.st-0 .ic{background:#ffb84d22;color:var(--amber);animation:pulse 1.6s ease-in-out infinite}
+.st-1 .ic{background:#2ecc7122;color:var(--green)}
+.st-2 .ic,.st-3 .ic{background:#e6394622;color:var(--red)}
+@keyframes pulse{50%{box-shadow:0 0 0 12px #ffb84d00,0 0 0 0 #ffb84d55}0%,100%{box-shadow:0 0 0 0 #ffb84d55}}
+#chat{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;padding:4px 2px 10px}
+.msg{max-width:85%;padding:10px 13px;border-radius:14px;font-size:15px;white-space:pre-wrap;word-wrap:break-word}
+.msg.me{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:4px}
+.msg.kb{align-self:flex-start;background:#1d2128;border-bottom-left-radius:4px}
+.typing{align-self:flex-start;display:flex;gap:4px;padding:12px 14px;background:#1d2128;border-radius:14px}
+.typing i{width:7px;height:7px;border-radius:50%;background:var(--dim);animation:dot 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes dot{50%{opacity:.25;transform:translateY(-3px)}}
+.send{display:flex;gap:8px}
+.send input{flex:1}
+.send button{flex:none;width:50px;border:0;border-radius:11px;background:var(--blue);color:#fff;font-size:20px;cursor:pointer}
+.send button:disabled{opacity:.4}
+footer{margin-top:30px;text-align:center;color:var(--faint);font-size:12.5px}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/logo.png" alt="">
+    <div><b id="studio">KB Muay Thai</b><span id="addr">Agendamento online</span></div>
+  </header>
+
+  <section class="hero">
+    <h1>Faça uma aula <em>experimental</em> de Muay Thai</h1>
+    <p>Escolha um horário, deixe seu nome e WhatsApp. A treinadora confirma em instantes.</p>
+  </section>
+
+  <section id="statusBox" class="hide">
+    <div class="card status" id="statusCard">
+      <div class="ic" id="stIc">⏳</div>
+      <h3 id="stTitle">Pedido enviado</h3>
+      <p id="stText"></p>
+      <button class="btn ghost" id="again">Marcar outro horário</button>
+    </div>
+  </section>
+
+  <section id="bookBox">
+    <h2>Horários livres</h2>
+    <div id="slots"><div class="empty">Carregando horários…</div></div>
+
+    <div id="form" class="card hide" style="margin-top:16px">
+      <div class="picked">Horário escolhido: <b id="pickLabel"></b></div>
+      <label for="name">Seu nome</label>
+      <input id="name" autocomplete="name" maxlength="60" placeholder="Como podemos te chamar?">
+      <label for="phone">WhatsApp com DDD</label>
+      <input id="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="25" placeholder="(11) 91234-5678">
+      <div class="err" id="err"></div>
+      <button class="btn" id="book">Pedir aula experimental</button>
+    </div>
+  </section>
+
+  <section id="chatBox">
+    <h2>Fale com a assistente</h2>
+    <div class="card">
+      <div id="chat"><div class="msg kb">Oi! 👋 Sou a assistente da academia. Posso te ajudar a escolher um horário para a aula experimental.</div></div>
+      <form class="send" id="sendForm">
+        <input id="text" maxlength="500" placeholder="Escreva sua mensagem…" autocomplete="off">
+        <button id="sendBtn" aria-label="Enviar">➤</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>Agendamento feito pelo KB · seus dados são usados só para confirmar a aula.</footer>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const api = (p, o) => fetch('/agendar/api/' + p, o).then(r => r.json());
+const post = (p, b) => api(p, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(b)});
+let sid = localStorage.kbSid;
+if (!sid) { sid = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join(''); localStorage.kbSid = sid; }
+let picked = null, bookingId = localStorage.kbBooking || '', statusTimer = 0, chatSeen = 0, chatTimer = 0;
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+async function loadInfo() {
+  try {
+    const j = await api('info');
+    $('studio').textContent = j.studio || 'KB Muay Thai';
+    document.title = 'Aula experimental · ' + (j.studio || 'KB');
+    if (j.address) $('addr').textContent = j.address;
+    renderSlots(j.slots || []);
+  } catch (e) { $('slots').innerHTML = '<div class="empty">Não foi possível carregar os horários. Tente de novo em instantes.</div>'; }
+}
+
+let allSlots = [], curDay = '';
+function renderSlots(slots) {
+  allSlots = slots;
+  const box = $('slots'); box.innerHTML = '';
+  if (!slots.length) { box.appendChild(el('div', 'empty', 'Nenhum horário livre nos próximos dias. Fale com a assistente abaixo.')); return; }
+  const days = [];
+  for (const s of slots) if (!days.includes(s.key.slice(0, 10))) days.push(s.key.slice(0, 10));
+  if (!days.includes(curDay)) curDay = days[0];
+  const row = el('div', 'days');
+  for (const d of days) {
+    const first = slots.find(s => s.key.startsWith(d));
+    const [wd, dm] = (first.label || '').split(' às ')[0].split(', ');
+    const n = slots.filter(s => s.key.startsWith(d)).length;
+    const b = el('button', 'day' + (d === curDay ? ' sel' : ''));
+    b.appendChild(document.createTextNode(wd || ''));
+    b.appendChild(el('b', '', dm || d.slice(8)));
+    b.appendChild(el('span', '', n + (n > 1 ? ' horários' : ' horário')));
+    b.onclick = () => { curDay = d; renderSlots(allSlots); };
+    row.appendChild(b);
+  }
+  box.appendChild(row);
+  const grid = el('div', 'slots');
+  for (const s of slots.filter(s => s.key.startsWith(curDay))) {
+    const b = el('button', 'slot' + (picked && picked.key === s.key ? ' sel' : ''));
+    b.appendChild(el('b', '', ((s.label || '').split(' às ')[1] || s.key.slice(11)) + (s.end ? ' – ' + s.end : '')));
+    b.appendChild(el('small', '', s.title || 'Aula'));
+    b.onclick = () => {
+      picked = s;
+      document.querySelectorAll('.slot').forEach(x => x.classList.remove('sel'));
+      b.classList.add('sel');
+      $('pickLabel').textContent = s.label + (s.title ? ' · ' + s.title : '');
+      $('form').classList.remove('hide');
+      $('err').textContent = '';
+      $('form').scrollIntoView({behavior: 'smooth', block: 'center'});
+      setTimeout(() => $('name').focus({preventScroll: true}), 350);
+    };
+    grid.appendChild(b);
+  }
+  box.appendChild(grid);
+  const sel = row.querySelector('.sel'); if (sel) row.scrollLeft = sel.offsetLeft - 16;
+}
+
+$('book').onclick = async () => {
+  const name = $('name').value.trim(), phone = $('phone').value.trim();
+  const digits = phone.replace(/\D/g, '').length;
+  if (name.length < 2) return $('err').textContent = 'Digite seu nome.';
+  if (digits < 10 || digits > 13) return $('err').textContent = 'Digite um WhatsApp com DDD (ex.: 11 91234-5678).';
+  if (!picked) return;
+  $('book').disabled = true; $('err').textContent = '';
+  try {
+    const j = await post('book', {name, phone, slot: picked.key, sid});
+    if (j.ok) { setBooking(j.id); }
+    else { $('err').textContent = j.error || 'Esse horário não está mais livre. Escolha outro.'; loadInfo(); }
+  } catch (e) { $('err').textContent = 'Sem conexão. Tente de novo.'; }
+  $('book').disabled = false;
+};
+
+function setBooking(id) {
+  bookingId = id; localStorage.kbBooking = id;
+  $('bookBox').classList.add('hide'); $('statusBox').classList.remove('hide');
+  showStatus({status: 0, label: picked ? picked.label : '', title: picked ? picked.title : ''});
+  $('statusBox').scrollIntoView({behavior: 'smooth'});
+  pollStatus();
+}
+
+const ST = [
+  ['⏳', 'Aguardando confirmação', 'Seu pedido chegou para a treinadora. Esta página atualiza sozinha.'],
+  ['✓', 'Aula confirmada!', 'Te esperamos lá. Você também vai receber a confirmação pelo WhatsApp.'],
+  ['✕', 'Horário não disponível', 'Infelizmente esse horário não deu. Escolha outro, por favor.'],
+  ['✕', 'Aula cancelada', 'Essa aula foi cancelada. Você pode marcar outro horário.'],
+];
+function showStatus(j) {
+  const s = ST[j.status] || ST[0];
+  $('statusCard').className = 'card status st-' + (j.status | 0);
+  $('stIc').textContent = s[0]; $('stTitle').textContent = s[1];
+  $('stText').textContent = (j.label ? j.label + (j.title ? ' · ' + j.title : '') + '\n' : '') + s[2];
+  $('stText').style.whiteSpace = 'pre-line';
+}
+
+async function pollStatus() {
+  clearTimeout(statusTimer);
+  if (!bookingId) return;
+  try {
+    const r = await fetch('/agendar/api/status?id=' + encodeURIComponent(bookingId));
+    if (r.status === 404) return reset();
+    const j = await r.json();
+    $('bookBox').classList.add('hide'); $('statusBox').classList.remove('hide');
+    showStatus(j);
+    if (j.status !== 0) return;
+  } catch (e) {}
+  statusTimer = setTimeout(pollStatus, 4000);
+}
+
+function reset() {
+  clearTimeout(statusTimer);
+  bookingId = ''; localStorage.removeItem('kbBooking'); picked = null;
+  $('statusBox').classList.add('hide'); $('bookBox').classList.remove('hide'); $('form').classList.add('hide');
+  loadInfo();
+}
+$('again').onclick = reset;
+
+// ---- chat
+function addMsg(me, text) {
+  const c = $('chat'); const t = c.querySelector('.typing'); if (t) t.remove();
+  c.appendChild(el('div', 'msg ' + (me ? 'me' : 'kb'), text));
+  c.scrollTop = c.scrollHeight;
+}
+function typing(on) {
+  const c = $('chat'); let t = c.querySelector('.typing');
+  if (on && !t) { t = el('div', 'typing'); t.innerHTML = '<i></i><i></i><i></i>'; c.appendChild(t); c.scrollTop = c.scrollHeight; }
+  if (!on && t) t.remove();
+}
+$('sendForm').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('text').value.trim(); if (!text) return;
+  $('sendBtn').disabled = true;
+  try {
+    const j = await post('chat', {sid, text});
+    if (j.ok) { $('text').value = ''; pollChat(); }
+    else addMsg(false, j.error || 'Não consegui enviar agora.');
+  } catch (e) { addMsg(false, 'Sem conexão. Tente de novo.'); }
+  $('sendBtn').disabled = false;
+};
+async function pollChat() {
+  clearTimeout(chatTimer);
+  try {
+    const j = await api('chat?sid=' + sid + '&since=' + chatSeen);
+    for (const m of j.msgs || []) addMsg(m.me, m.text);
+    if (j.total != null) chatSeen = j.total;
+    typing(j.busy);
+    if (j.booking && j.booking !== bookingId) { setBooking(j.booking); }
+    if (j.busy) chatTimer = setTimeout(pollChat, 900);
+  } catch (e) { chatTimer = setTimeout(pollChat, 3000); }
+}
+
+loadInfo();
+pollChat();
+if (bookingId) pollStatus();
+</script>
+</body>
+</html>

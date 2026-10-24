@@ -10,6 +10,7 @@
 #include "media/image.h"
 #include "media/screen.h"
 #include "net/mobile_server.h"
+#include "net/tunnel.h"
 #include "core/perf.h"
 
 #include <atomic>
@@ -156,6 +157,7 @@ public:
     std::string MobileUrl();            // http://ip:porta/?t=token
     std::vector<std::string> LanIps() { return MobileServer::LanAddresses(); }
     void SetMobile(bool on);
+    Tunnel& GetTunnel() { return tunnel_; }
 
     // ---- Ollama
     bool OllamaInstalled() { return !platform::FindOllama().empty(); }
@@ -229,6 +231,7 @@ private:
     PerfMonitor perf_;
     void AppendThinking(int id, const std::string& piece);
     MobileServer mobile_;
+    Tunnel tunnel_;
     std::string MobileState(int since);
 
     platform::ChildProcess llamaProc_;

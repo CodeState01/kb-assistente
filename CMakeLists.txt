@@ -88,6 +88,7 @@ add_executable(KB WIN32
   src/core/install.cpp
   src/net/http.cpp
   src/net/mobile_server.cpp
+  src/net/tunnel.cpp
   src/llm/llm_client.cpp
   src/llm/model_scan.cpp
   src/audio/audio_capture.cpp

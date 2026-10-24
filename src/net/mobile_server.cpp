@@ -7,6 +7,7 @@
 #include <cstring>
 #include <map>
 #include <algorithm>
+#include <cwctype>
 
 using nlohmann::json;
 
@@ -194,16 +195,26 @@ void MobileServer::Handle(uintptr_t sockp) {
 }
 
 std::vector<std::string> MobileServer::LanAddresses() {
-    std::vector<std::string> good, other;
-    ULONG size = 32 * 1024;
+    // Classifica os endereços: Wi-Fi/Ethernet em faixa privada primeiro; VPNs e adaptadores virtuais por último.
+    struct Cand { std::string ip; int score; };
+    std::vector<Cand> cands;
+    ULONG size = 64 * 1024;
     std::vector<unsigned char> buf(size);
     auto* aa = (IP_ADAPTER_ADDRESSES*)buf.data();
-    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_INCLUDE_GATEWAYS,
+    // AF_UNSPEC para enxergar também gateways IPv6 (muitos roteadores só anunciam IPv6 ao Windows)
+    if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_INCLUDE_GATEWAYS,
                              nullptr, aa, &size) != NO_ERROR)
-        return good;
+        return {};
     for (auto* a = aa; a; a = a->Next) {
         if (a->OperStatus != IfOperStatusUp || a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+        std::wstring nameW = std::wstring(a->FriendlyName ? a->FriendlyName : L"") + L" " + (a->Description ? a->Description : L"");
+        for (auto& ch : nameW) ch = (wchar_t)towlower(ch);
+        bool virt = false;
+        for (const wchar_t* k : {L"vpn", L"radmin", L"hamachi", L"zerotier", L"tailscale", L"wireguard", L"virtual", L"vethernet",
+                                 L"hyper-v", L"vmware", L"virtualbox", L"wsl", L"docker", L"tap-", L"tun"})
+            if (nameW.find(k) != std::wstring::npos) virt = true;
         for (auto* u = a->FirstUnicastAddress; u; u = u->Next) {
+            if (u->Address.lpSockaddr->sa_family != AF_INET) continue;
             char ip[64];
             auto* sin = (sockaddr_in*)u->Address.lpSockaddr;
             inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
@@ -211,11 +222,17 @@ std::vector<std::string> MobileServer::LanAddresses() {
             if (s.rfind("169.254.", 0) == 0) continue;
             bool priv = s.rfind("192.168.", 0) == 0 || s.rfind("10.", 0) == 0 ||
                         (s.rfind("172.", 0) == 0 && atoi(s.c_str() + 4) >= 16 && atoi(s.c_str() + 4) <= 31);
-            // adaptadores com gateway (Wi-Fi/Ethernet de verdade) primeiro; VPNs/virtuais depois
-            if (priv && a->FirstGatewayAddress) good.push_back(s);
-            else other.push_back(s);
+            int score = 0;
+            if (priv) score += 100;
+            if (a->IfType == IF_TYPE_IEEE80211 || a->IfType == IF_TYPE_ETHERNET_CSMACD) score += 50;
+            if (a->FirstGatewayAddress) score += 20;
+            if (s.rfind("192.168.", 0) == 0) score += 5;
+            if (virt) score -= 300;
+            cands.push_back({s, score});
         }
     }
-    good.insert(good.end(), other.begin(), other.end());
-    return good;
+    std::stable_sort(cands.begin(), cands.end(), [](const Cand& x, const Cand& y) { return x.score > y.score; });
+    std::vector<std::string> out;
+    for (auto& c : cands) out.push_back(c.ip);
+    return out;
 }

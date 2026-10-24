@@ -8,6 +8,7 @@
 #include "ui/widgets.h"
 #include "ui/assets.h"
 #include "ui/timer.h"
+#include "net/tunnel.h"
 #include "core/files.h"
 #include "media/image.h"
 #include "qrcodegen.hpp"
@@ -1364,14 +1365,41 @@ void DrawQr(const std::string& data, float size) {
 
 void MobileSection(App& app, bool& ch) {
     w::SectionTitle("Celular (Android e iPhone)", Icon::Phone);
-    w::Hint("Use o KB pelo celular na mesma rede Wi-Fi: converse, mande fotos da câmera para ele ver e ouça as respostas.");
+    w::Hint("Use o KB pelo celular: converse, mande fotos da câmera para ele ver e ouça as respostas.");
     ch |= w::Toggle("Permitir acesso pelo celular", &g_edit.mobileEnabled,
-                    "Abre um servidor só na sua rede local, protegido por um código secreto no QR code.");
+                    "Protegido por um código secreto que só existe no QR code.");
     if (!app.MobileRunning()) return;
+    {
+        const char* modes[] = {"Pela internet (recomendado)", "Só no Wi-Fi"};
+        if (Segmented("mobmode", &g_edit.mobileMode, modes, 2)) ch = true;
+    }
+    if (g_edit.mobileMode == 0) {
+        Tunnel& tn = app.GetTunnel();
+        switch (tn.GetState()) {
+        case Tunnel::State::Downloading:
+            ImGui::TextUnformatted("Preparando o túnel seguro (só na primeira vez)…");
+            w::Progress(tn.DownloadProgress(), ImVec2(-1, px(8)));
+            return;
+        case Tunnel::State::Starting:
+        case Tunnel::State::Off:
+            w::Spinner("##tun", px(10), px(2.5f), theme::Cyan);
+            ImGui::SameLine();
+            ImGui::TextUnformatted("Abrindo o túnel seguro…");
+            return;
+        case Tunnel::State::Error:
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::Red);
+            ImGui::TextWrapped("%s", tn.Error().c_str());
+            ImGui::PopStyleColor();
+            if (w::GhostButton("Tentar de novo", ImVec2(0, 0), Icon::Refresh)) app.SetMobile(true);
+            return;
+        case Tunnel::State::Ready: break;
+        }
+        w::Hint("Funciona no Wi-Fi ou no 4G/5G, por um endereço https seguro (Cloudflare). O endereço muda quando o KB reinicia: escaneie de novo.");
+    }
     static int fwState = -1;          // -1 não verificado, 0 bloqueado, 1 liberado
     static double fwChecked = -100;
-    if (fwState != 1 && NowSeconds() - fwChecked > 10) { fwState = platform::FirewallRuleExists() ? 1 : 0; fwChecked = NowSeconds(); }
-    if (fwState == 0) {
+    if (g_edit.mobileMode == 1 && fwState != 1 && NowSeconds() - fwChecked > 10) { fwState = platform::FirewallRuleExists() ? 1 : 0; fwChecked = NowSeconds(); }
+    if (g_edit.mobileMode == 1 && fwState == 0) {
         w::BeginCard("##fw", theme::Amber);
         ImGui::PushFont(theme::fonts.semibold);
         ImGui::TextWrapped("O Firewall do Windows está bloqueando o celular");
@@ -1388,6 +1416,7 @@ void MobileSection(App& app, bool& ch) {
         ImGui::Spacing();
     }
     std::string url = app.MobileUrl();
+    if (url.empty()) return;
     float qs = std::min(px(220), ImGui::GetContentRegionAvail().x);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - qs) * 0.5f);
     DrawQr(url, qs);
@@ -1396,11 +1425,15 @@ void MobileSection(App& app, bool& ch) {
     ImGui::TextWrapped("%s", url.c_str());
     ImGui::PopFont();
     if (w::GhostButton("Copiar link", ImVec2(0, 0), Icon::Copy)) ImGui::SetClipboardText(url.c_str());
-    w::Hint("1. Conecte o celular no mesmo Wi-Fi do PC.\n2. Aponte a câmera para o QR code.\n"
-            "3. iPhone: Compartilhar > Adicionar à Tela de Início.  Android: menu ⋮ > Adicionar à tela inicial.\n"
-            "Se o Windows perguntar sobre o Firewall, permita o KB em redes privadas.");
+    if (g_edit.mobileMode == 0)
+        w::Hint("1. Aponte a câmera do celular para o QR code (funciona no Wi-Fi ou no 4G).\n"
+                "2. iPhone: Compartilhar > Adicionar à Tela de Início.  Android: menu ⋮ > Adicionar à tela inicial.");
+    else
+        w::Hint("1. Conecte o celular no mesmo Wi-Fi do PC.\n2. Aponte a câmera para o QR code.\n"
+                "3. iPhone: Compartilhar > Adicionar à Tela de Início.  Android: menu ⋮ > Adicionar à tela inicial.\n"
+                "Se não abrir, use o modo \"Pela internet\".");
     auto ips = app.LanIps();
-    if (ips.size() > 1) {
+    if (g_edit.mobileMode == 1 && ips.size() > 1) {
         std::string others;
         for (size_t i = 1; i < ips.size(); ++i) others += (i > 1 ? ", " : "") + ips[i];
         w::Hint("Se não abrir, troque o endereço por: %s", others.c_str());

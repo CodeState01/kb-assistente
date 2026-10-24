@@ -194,7 +194,18 @@ void App::Init(bool startedMinimized) {
     if (diagnostic) {
         silent_ = true; // diagnóstico silencioso, sem alterar a config salva
         wchar_t q[1024], a[1024];
-        if (GetEnvironmentVariableW(L"KB_MOBILE", nullptr, 0) > 0) SetMobile(true);
+        if (GetEnvironmentVariableW(L"KB_MOBILE", nullptr, 0) > 0) {
+            SetMobile(true);
+            for (int i = 0; i < 600 && Cfg().mobileMode == 0 && tunnel_.GetState() != Tunnel::State::Ready &&
+                            tunnel_.GetState() != Tunnel::State::Error; ++i)
+                Sleep(100);
+            if (FILE* f = _wfopen((text::Widen(platform::GetEnv("TEMP")) + L"\\kb_url.txt").c_str(), L"wb")) {
+                std::string u = MobileUrl();
+                for (auto& ip : LanIps()) u += "\n" + ip;
+                fwrite(u.data(), 1, u.size(), f);
+                fclose(f);
+            }
+        }
         if (GetEnvironmentVariableW(L"KB_SCREEN", nullptr, 0) > 0) {
             SetScreenShare(true);
             for (int i = 0; i < 40 && !screen_.Latest(); ++i) Sleep(100);
@@ -223,6 +234,7 @@ void App::Shutdown() {
         for (auto& b : bg_) if (b.first.joinable()) b.first.join();
         bg_.clear();
     }
+    tunnel_.Stop();
     mobile_.Stop();
     screen_.Stop();
     perf_.Stop();
@@ -782,8 +794,12 @@ bool App::EnsureOllama(bool wait) {
 }
 
 std::string App::MobileUrl() {
-    auto ips = LanIps();
     Config c = Cfg();
+    if (c.mobileMode == 0) {
+        std::string u = tunnel_.Url();
+        return u.empty() ? std::string() : u + "/?t=" + c.mobileToken;
+    }
+    auto ips = LanIps();
     return "http://" + (ips.empty() ? std::string("127.0.0.1") : ips.front()) + ":" + std::to_string(c.mobilePort) + "/?t=" + c.mobileToken;
 }
 
@@ -815,9 +831,11 @@ std::string App::MobileState(int since) {
 }
 
 void App::SetMobile(bool on) {
-    if (!on) { mobile_.Stop(); return; }
-    if (mobile_.Running()) return;
+    if (!on) { tunnel_.Stop(); mobile_.Stop(); return; }
     Config c = Cfg();
+    if (c.mobileMode == 0) tunnel_.Start(c.mobilePort);
+    else tunnel_.Stop();
+    if (mobile_.Running()) return;
     MobileHooks h;
     h.stateJson = [this](int since) { return MobileState(since); };
     h.send = [this](const std::string& text, const std::string& b64) {
@@ -875,7 +893,7 @@ void App::ApplyConfig(const Config& c) {
                 (o.backend != c.backend || o.ggufPath != c.ggufPath || o.ggufGpuLayers != c.ggufGpuLayers ||
                  o.contextSize != c.contextSize || o.llamaServerPath != c.llamaServerPath);
         mic = o.micDevice != c.micDevice;
-        mobile = o.mobileEnabled != c.mobileEnabled;
+        mobile = o.mobileEnabled != c.mobileEnabled || (c.mobileEnabled && o.mobileMode != c.mobileMode);
         stt = o.whisperModel != c.whisperModel;
         autostart = o.startWithWindows != c.startWithWindows || (c.startWithWindows && o.startMinimized != c.startMinimized);
         if (o.backend == LlmBackend::LocalGguf && c.backend != LlmBackend::LocalGguf) local = false;

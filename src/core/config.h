@@ -51,6 +51,7 @@ struct Config {
     // ---- Celular / visão
     bool mobileEnabled = false;            // servidor na rede local para o app do celular
     int mobilePort = 7777;
+    int mobileMode = 0;                    // 0 = pela internet (túnel seguro https), 1 = só na rede Wi-Fi
     std::string mobileToken;               // gerado na primeira vez
     int screenIntervalMs = 1000;           // intervalo da transmissão de tela
     bool autoVisionModel = true;           // troca para um modelo com visão quando há imagem

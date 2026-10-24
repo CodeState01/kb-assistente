@@ -88,6 +88,14 @@ void Load(float scale) {
     fonts.title = add(disp, 24.f);
     fonts.huge = add(disp, 40.f);
     fonts.label = add(disp, 14.f);
+    {
+        static const ImWchar digits[] = {0x0020, 0x0020, 0x002B, 0x002B, 0x002D, 0x003A, 0};
+        ImFontConfig dc;
+        dc.OversampleH = 1;
+        dc.OversampleV = 1;
+        if (!disp.empty()) fonts.clock = io.Fonts->AddFontFromFileTTF(disp.c_str(), 160.f * scale, &dc, digits);
+        if (!fonts.clock) fonts.clock = fonts.huge;
+    }
     fonts.mono = add(mono, 15.f);
     io.FontDefault = fonts.body;
 

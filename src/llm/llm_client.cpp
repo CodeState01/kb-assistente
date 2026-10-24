@@ -88,7 +88,11 @@ void FillCapabilities(const Config& c, std::vector<ModelInfo>& models) {
         if (j.is_discarded()) continue;
         m.capsKnown = true;
         if (j.contains("capabilities") && j["capabilities"].is_array())
-            for (auto& cap : j["capabilities"]) if (cap.is_string() && cap.get<std::string>() == "vision") m.vision = true;
+            for (auto& cap : j["capabilities"]) {
+                if (!cap.is_string()) continue;
+                if (cap.get<std::string>() == "vision") m.vision = true;
+                if (cap.get<std::string>() == "tools") m.tools = true;
+            }
     }
 }
 
@@ -125,9 +129,16 @@ std::vector<ServerInfo> DetectServers() {
 }
 
 bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>& msgs, const TokenFn& onToken,
-          std::string* err, std::atomic<bool>* cancel, const TokenFn& onThink) {
+          std::string* err, std::atomic<bool>* cancel, const TokenFn& onThink, const std::string& toolsJson,
+          std::vector<ToolCall>* toolCalls) {
     json jm = json::array();
     for (auto& m : msgs) {
+        if (!m.toolCallsJson.empty()) {
+            json tc = json::parse(m.toolCallsJson, nullptr, false);
+            jm.push_back({{"role", "assistant"}, {"content", m.content}, {"tool_calls", tc.is_discarded() ? json::array() : tc}});
+            continue;
+        }
+        if (m.role == "tool") { jm.push_back({{"role", "tool"}, {"content", m.content}, {"tool_name", m.toolName}}); continue; }
         if (m.imagesB64.empty()) { jm.push_back({{"role", m.role}, {"content", m.content}}); continue; }
         if (c.backend == LlmBackend::Ollama) {
             jm.push_back({{"role", m.role}, {"content", m.content}, {"images", m.imagesB64}});
@@ -156,6 +167,10 @@ bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>&
                      {"stream", true},
                      {"keep_alive", "30m"},
                      {"options", {{"temperature", c.temperature}, {"num_ctx", c.contextSize}}}};
+        if (!toolsJson.empty()) {
+            json tl = json::parse(toolsJson, nullptr, false);
+            if (!tl.is_discarded()) body["tools"] = tl;
+        }
         r = http::Request("POST", base + "/api/chat", body.dump(), o, [&](const char* d, size_t n, uint64_t) {
             lines.Feed(d, n, [&](const std::string& line) {
                 if (stop || line.empty()) return;
@@ -165,6 +180,16 @@ bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>&
                 if (j.contains("message") && j["message"].contains("thinking") && j["message"]["thinking"].is_string()) {
                     std::string th = j["message"]["thinking"].get<std::string>();
                     if (!th.empty() && onThink && !onThink(th)) stop = true;
+                }
+                if (toolCalls && j.contains("message") && j["message"].contains("tool_calls") && j["message"]["tool_calls"].is_array()) {
+                    for (auto& tc : j["message"]["tool_calls"]) {
+                        if (!tc.contains("function")) continue;
+                        ToolCall call;
+                        call.name = tc["function"].value("name", "");
+                        auto& a = tc["function"]["arguments"];
+                        call.argsJson = a.is_string() ? a.get<std::string>() : a.dump();
+                        if (!call.name.empty()) toolCalls->push_back(call);
+                    }
                 }
                 if (j.contains("message") && j["message"].contains("content") && j["message"]["content"].is_string()) {
                     std::string piece = j["message"]["content"].get<std::string>();

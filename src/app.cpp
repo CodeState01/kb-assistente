@@ -6,6 +6,8 @@
 #include <bcrypt.h>
 #include "core/files.h"
 #include "core/install.h"
+#include "core/skills.h"
+#include "net/web.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
@@ -177,6 +179,7 @@ void App::Init(bool startedMinimized) {
         ScheduleSave();
     }
 
+    skills::EnsureDefaults();
     AutoPickWhisper();
     if (cfg_.backend == LlmBackend::LocalGguf) StartLocalServer();
     if (cfg_.backend == LlmBackend::Ollama) EnsureOllama(false);
@@ -668,9 +671,11 @@ void App::ProcessQuery(const std::string& q) {
            "na mesma resposta, com um conteúdo sensato (ele pode negar e pedir ajustes); não pergunte antes.";
     if (!images.empty())
         sys += "\n\nVISÃO: você está recebendo imagem(ns) junto da mensagem do usuário" +
-               std::string(screen_.Active() ? " (incluindo uma captura AO VIVO da tela do computador dele)" : "") +
+               (screen_.Active() ? " (incluindo uma captura AO VIVO de \"" + screen_.SourceName() + "\" no computador dele)" : std::string()) +
                ". Descreva e use o que vê para responder.";
     sys += "\n\nData e hora atual: " + text::NowPortuguese() + ".";
+    const bool useTools = c.backend == LlmBackend::Ollama && ModelHasTools(model);
+    if (useTools) sys += ToolsPrompt();
     msgs.push_back({"system", sys, {}});
     {
         std::lock_guard<std::mutex> l(msgMtx_);
@@ -695,6 +700,17 @@ void App::ProcessQuery(const std::string& q) {
         messages_.back().modelUsed = model;
     }
     if (!visionNote.empty()) Notify("Usando " + visionNote + " para enxergar a imagem.", 0);
+    // Modelos sem ferramentas: pesquisa antes quando o pedido claramente precisa da internet
+    if (!useTools && c.webTools && NeedsWebSearch(q)) {
+        nlohmann::json qa = {{"query", q}};
+        std::string found = RunTool(aid, {"web_search", qa.dump()});
+        for (auto it = msgs.rbegin(); it != msgs.rend(); ++it)
+            if (it->role == "user") {
+                it->content += "\n\n[RESULTADOS DA PESQUISA NA WEB, feita agora]\n" + found +
+                               "\n[FIM DOS RESULTADOS] Responda usando APENAS estes resultados (eles são mais recentes que o seu conhecimento) e cite o site.";
+                break;
+            }
+    }
     llm::ThinkFilter tf;
     TtsFeeder feeder(c.speakReplies ? tts_.get() : nullptr);
     bool any = false;
@@ -704,7 +720,7 @@ void App::ProcessQuery(const std::string& q) {
         tokenPulse_ = 0.6f;
         return true;
     };
-    bool ok = llm::Chat(c, model, msgs, [&](const std::string& piece) {
+    auto onTok = [&](const std::string& piece) {
         if (cancelLlm_ || quit_) return false;
         std::string th;
         std::string vis = tf.Feed(piece, &th);
@@ -721,7 +737,29 @@ void App::ProcessQuery(const std::string& q) {
         tokenPulse_ = 1.f;
         feeder.Feed(vis);
         return true;
-    }, &err, &cancelLlm_, onThink);
+    };
+    // Laço de ferramentas: o modelo pode pesquisar, ler páginas, usar skills... e depois responder.
+    const std::string toolsJson = useTools ? ToolsJson() : std::string();
+    bool ok = false;
+    for (int step = 0; step < 6; ++step) {
+        std::vector<ToolCall> calls;
+        ok = llm::Chat(c, model, msgs, onTok, &err, &cancelLlm_, onThink, toolsJson, useTools ? &calls : nullptr);
+        if (!ok || cancelLlm_ || quit_ || calls.empty()) break;
+        nlohmann::json tcs = nlohmann::json::array();
+        for (auto& call : calls) {
+            nlohmann::json args = nlohmann::json::parse(call.argsJson, nullptr, false);
+            tcs.push_back({{"function", {{"name", call.name}, {"arguments", args.is_discarded() ? nlohmann::json::object() : args}}}});
+        }
+        ChatMsg asst{"assistant", "", {}};
+        asst.toolCallsJson = tcs.dump();
+        msgs.push_back(asst);
+        SetState(AssistState::Thinking);
+        for (auto& call : calls) {
+            ChatMsg tm{"tool", RunTool(aid, call), {}};
+            tm.toolName = call.name;
+            msgs.push_back(tm);
+        }
+    }
     thinkingHidden_ = false;
 
     if (cancelLlm_) {
@@ -765,12 +803,18 @@ std::string App::BestVisionModel() {
 
 void App::SetScreenShare(bool on) {
     if (on && !screen_.Active()) {
-        screen_.Start(std::clamp(Cfg().screenIntervalMs, 250, 10000));
-        Notify("Tela compartilhada com o KB. Pergunte: \"o que tem na minha tela?\"", 1);
+        StartScreenShare(CaptureSource{});
     } else if (!on && screen_.Active()) {
         screen_.Stop();
         Notify("Compartilhamento de tela encerrado.", 0);
     }
+}
+
+void App::StartScreenShare(const CaptureSource& src) {
+    if (screen_.Active()) screen_.Stop();
+    screen_.Start(std::clamp(Cfg().screenIntervalMs, 250, 10000), src);
+    std::string what = src.kind == CaptureSource::Window ? "Janela \"" + src.name + "\"" : src.name.empty() ? std::string("Tela") : src.name;
+    Notify(what + " compartilhada com o KB. Pergunte: \"o que tem na minha tela?\"", 1);
 }
 
 bool App::EnsureOllama(bool wait) {
@@ -935,13 +979,13 @@ void App::RefreshModels() {
             std::lock_guard<std::mutex> l(dataMtx_);
             for (auto& m : list)
                 for (auto& o : models_)
-                    if (o.name == m.name && o.capsKnown) { m.vision = o.vision; m.capsKnown = true; }
+                    if (o.name == m.name && o.capsKnown) { m.vision = o.vision; m.tools = o.tools; m.capsKnown = true; }
         }
         for (auto& m : list) if (!m.capsKnown) unknown.push_back(m);
         llm::FillCapabilities(c, unknown);
         for (auto& m : list)
             for (auto& u : unknown)
-                if (u.name == m.name) { m.vision = u.vision; m.capsKnown = u.capsKnown; }
+                if (u.name == m.name) { m.vision = u.vision; m.tools = u.tools; m.capsKnown = u.capsKnown; }
         {
             std::lock_guard<std::mutex> l(dataMtx_);
             models_ = list;

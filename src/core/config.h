@@ -56,6 +56,8 @@ struct Config {
     std::string mobileToken;               // gerado na primeira vez
     int screenIntervalMs = 1000;           // intervalo da transmissão de tela
     bool autoVisionModel = true;           // troca para um modelo com visão quando há imagem
+    bool webTools = true;                  // a IA pode pesquisar na internet
+    std::vector<std::string> disabledSkills;
 
     // ---- Aparência
     bool showPerf = true;                  // CPU/GPU na barra de título

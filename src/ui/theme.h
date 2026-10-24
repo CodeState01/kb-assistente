@@ -11,6 +11,7 @@ struct Fonts {
     ImFont* huge = nullptr;
     ImFont* mono = nullptr;
     ImFont* label = nullptr;   // rótulos de seção (condensada, maiúsculas)
+    ImFont* clock = nullptr;   // relógio grande do timer (só dígitos e ":")
 };
 extern Fonts fonts;
 

@@ -82,6 +82,9 @@ add_executable(KB WIN32
   src/main.cpp
   src/app.cpp
   src/app_commands.cpp
+  src/app_tools.cpp
+  src/core/skills.cpp
+  src/net/web.cpp
   src/core/config.cpp
   src/core/platform.cpp
   src/core/text.cpp

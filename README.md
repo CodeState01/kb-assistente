@@ -16,7 +16,11 @@ flutuantes nativas.
 | **IA local** | Usa o que já está instalado: **Ollama**, **LM Studio**, **llama.cpp server**, **Jan**, **KoboldCpp**, text-generation-webui, vLLM… ou um arquivo **.gguf** direto (via `llama-server`) |
 | **Modelo de ~13 GB** | Recomendado: `gemma3:12b-it-q8_0` (~13 GB) — baixa pelo próprio app com barra de progresso. Sem escolha manual, a KB usa o maior modelo instalado que cabe na sua RAM |
 | **Embeds** | A IA pode mostrar cartões (`card`), passo a passo (`passos`), avisos, dicas, tabelas e código. Cada um tem *copiar* e *destacar em janela flutuante* (com "sempre no topo") |
-| **Janelas** | Painéis Conversa / Embeds / Modelos / Configurações: arraste a aba para fora → vira janela do Windows; arraste de volta → acopla |
+| **Janelas** | Conversa na janela principal; **Painel do KB** (Geral, IA e modelos, Voz, Celular, Skills, Itens) e **Timer** abrem como janelas flutuantes próprias do Windows |
+| **Pesquisa na web** | A IA pesquisa na internet e lê páginas quando precisa de informação atual (ferramentas `web_search` / `open_url`), mostrando as fontes clicáveis na resposta |
+| **Skills** | Instruções em arquivos `.md` (em `%APPDATA%\KB\skills`) que a IA carrega quando o pedido combina; dá para ativar, editar e criar pelo Painel |
+| **Visão** | Anexe imagens ou transmita ao vivo **uma tela ou uma janela específica**, escolhida num seletor com miniaturas |
+| **Timer de Muay Thai** | Placar grande por fase (preparar, luta, descanso), rounds, aviso dos últimos segundos, vários sinais (sino, gongo, apito…), treinos salvos e "KB, criar treino" por voz |
 | **Sistema** | Inicia com o Windows (minimizada na bandeja), orb flutuante quando minimizada, atalho global (padrão **Ctrl+Shift+Espaço**), palavra de ativação opcional ("KB, que horas são?"), instância única |
 
 ## Compilar
@@ -59,6 +63,10 @@ src/
   audio/                microfone (miniaudio) + VAD, whisper.cpp, SAPI com visemas
   llm/                  cliente Ollama / OpenAI-compatível (streaming), busca de servidores e .gguf
   net/http.*            WinHTTP com streaming e downloads
+  net/web.*             pesquisa (DuckDuckGo) e leitura de páginas para a IA
+  core/skills.*         skills em .md com frontmatter (name, description)
+  app_tools.cpp         ferramentas que a IA pode chamar (pesquisa, skills, treinos, timer)
+  media/screen.*        transmissão de tela/janela (DXGI, GDI, PrintWindow)
   ui/orb.*              o orb animado (gradientes radiais, blobs deformados por ruído, partículas)
   ui/embeds.*, blocks.* parser de markdown + cartões visuais + janelas flutuantes
   ui/views.*            telas: título, barra lateral, conversa, modelos, configurações, mini-orb

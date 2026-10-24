@@ -25,6 +25,13 @@
 
 enum class AssistState { Idle, Listening, Transcribing, Thinking, Speaking };
 
+// Passo de ferramenta mostrado na conversa (ex.: "Pesquisando na web: ...")
+struct ToolEvent {
+    std::string name, label;
+    int status = 0; // 0 rodando, 1 ok, 2 erro
+    std::vector<std::pair<std::string, std::string>> sources; // título, url
+};
+
 struct Message {
     int id = 0;
     bool user = false;
@@ -35,6 +42,7 @@ struct Message {
     std::vector<PicturePtr> pictures;  // imagens anexadas (fotos, prints da tela)
     std::string modelUsed;             // modelo que respondeu (ex.: troca automática para visão)
     std::string thinking;              // raciocínio do modelo (quando ele mostra)
+    std::vector<ToolEvent> toolEvents; // pesquisas na web, skills usadas...
     bool thinkingLive = false;         // ainda pensando
     double thinkStart = 0, thinkSecs = 0;
     double time = 0;
@@ -146,6 +154,7 @@ public:
     // ---- Visão
     ScreenShare& Screen() { return screen_; }
     void SetScreenShare(bool on);
+    void StartScreenShare(const CaptureSource& src);
     bool ModelHasVision(const std::string& name);
     std::string BestVisionModel();      // maior modelo instalado com visão (vazio = nenhum)
 
@@ -242,6 +251,15 @@ private:
     std::vector<std::pair<std::thread, std::shared_ptr<std::atomic<bool>>>> bg_;
     double nextModelPoll_ = 0;
     bool silent_ = false;
+
+    // ferramentas da IA (app_tools.cpp)
+    std::string ToolsJson();
+    std::string ToolsPrompt();
+    std::string RunTool(int msgId, const ToolCall& call);
+    void AddToolEvent(int msgId, const ToolEvent& ev);
+    void UpdateLastToolEvent(int msgId, int status, const std::vector<std::pair<std::string, std::string>>& sources);
+    bool ModelHasTools(const std::string& name);
+    bool NeedsWebSearch(const std::string& q);
 
     // comandos locais (criar treino, timer)
     bool HandleLocalCommand(const std::string& q, bool fromVoice);

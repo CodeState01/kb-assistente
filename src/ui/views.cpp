@@ -8,6 +8,8 @@
 #include "ui/widgets.h"
 #include "ui/assets.h"
 #include "ui/timer.h"
+#include "core/skills.h"
+#include "core/install.h"
 #include "net/tunnel.h"
 #include "core/files.h"
 #include "media/image.h"
@@ -19,6 +21,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 using theme::px;
 
@@ -32,8 +37,9 @@ TitleBarInfo g_title;
 OrbMode g_mode = OrbMode::Idle;
 char g_input[4096] = "";
 bool g_inputFocused = false;
-bool g_showEmbeds = true, g_showModels = true, g_showSettings = true, g_showTimer = false;
-float g_splashT = -1.f;   // animação de abertura (-1 = ainda não começou)
+bool g_showPanel = false, g_showTimer = false;
+float g_splashT = -1.f;
+void OpenPanel(int tab);   // animação de abertura (-1 = ainda não começou)
 int g_sel = 0;
 const char* g_focusNext = nullptr;
 bool g_stickBottom = true;
@@ -99,9 +105,6 @@ void AddAttachment(App& app, PicturePtr p) {
 int g_debugMode = -1;
 
 const char* kChat = "Conversa###chat";
-const char* kEmbeds = "Embeds###embeds";
-const char* kModels = "Modelos###models";
-const char* kSettings = "Configurações###settings";
 
 struct HotkeyPreset { const char* name; int mods; int vk; };
 const HotkeyPreset kHotkeys[] = {
@@ -296,7 +299,7 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
         dl->AddText(ImVec2(a2.x + px(28), cy - ts2.y * 0.5f), anim::Col(theme::Text), tb);
         ImGui::PopFont();
         ImGui::SetCursorScreenPos(a2);
-        if (ImGui::InvisibleButton("##timerbadge", ImVec2(w2, h2))) { g_showTimer = true; g_focusNext = "Timer###timer"; }
+        if (ImGui::InvisibleButton("##timerbadge", ImVec2(w2, h2))) { g_showTimer = true; g_focusNext = "Timer###timer2"; }
         leftLimit = a2.x - px(8);
     }
     if (c.showPerf) {
@@ -391,10 +394,8 @@ void Sidebar(App& app, ImGuiViewport* vp, float top, float wdt) {
     struct Item { Icon icon; const char* tip; const char* win; bool* flag; };
     Item items[] = {
         {Icon::Chat, "Conversa", kChat, nullptr},
-        {Icon::Grid, "Embeds (itens mostrados)", kEmbeds, &g_showEmbeds},
-        {Icon::Cpu, "Modelos de IA e voz", kModels, &g_showModels},
-        {Icon::Gear, "Configurações", kSettings, &g_showSettings},
-        {Icon::Clock, "Timer de rounds (Muay Thai)", "Timer###timer", &g_showTimer},
+        {Icon::Gear, "Painel: configurações, modelos de IA, voz, skills e itens", "Painel do KB###panel", &g_showPanel},
+        {Icon::Clock, "Timer de rounds (Muay Thai)", "Timer###timer2", &g_showTimer},
     };
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float bs = px(44);
@@ -426,12 +427,10 @@ void BuildLayout(ImGuiID ds, ImVec2 size) {
     ImGui::DockBuilderRemoveNode(ds);
     ImGui::DockBuilderAddNode(ds, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(ds, size);
-    ImGuiID left, right;
-    ImGui::DockBuilderSplitNode(ds, ImGuiDir_Right, 0.36f, &right, &left);
-    ImGui::DockBuilderDockWindow(kChat, left);
-    ImGui::DockBuilderDockWindow(kEmbeds, right);
-    ImGui::DockBuilderDockWindow(kSettings, right);
-    ImGui::DockBuilderDockWindow(kModels, right); // última aba = selecionada
+    // só a conversa fica na janela principal; Painel e Timer são janelas flutuantes
+    ImGuiID right = 0;
+    ImGui::DockBuilderDockWindow(kChat, ds);
+    (void)right;
     ImGui::DockBuilderFinish(ds);
 }
 
@@ -453,7 +452,7 @@ void Host(App& app) {
     Sidebar(app, vp, titleH, sideW);
     ImGui::SetCursorScreenPos(ImVec2(vp->Pos.x + sideW, vp->Pos.y + titleH));
     ImVec2 dsSize(vp->Size.x - sideW - px(10), vp->Size.y - titleH - px(10));
-    ImGuiID ds = ImGui::GetID("KBDockspace");
+    ImGuiID ds = ImGui::GetID("KBDockspace2");
     if (!ImGui::DockBuilderGetNode(ds)) BuildLayout(ds, dsSize);
     ImGui::DockSpace(ds, dsSize, ImGuiDockNodeFlags_None);
     ImGui::End();
@@ -498,15 +497,14 @@ void OnboardingCard(App& app) {
         ImGui::Spacing();
     };
     row(online, "Servidor de IA", online ? "Conectado" : "Nenhum servidor encontrado (Ollama, LM Studio, llama.cpp…)", "Procurar",
-        [&] { app.DetectServers(); g_showModels = true; g_focusNext = kModels; });
+        [&] { app.DetectServers(); OpenPanel(1); });
     row(!model.empty(), "Modelo de linguagem", model.empty() ? std::string("Recomendado: ") + llm::kRecommendedModel + " (~13 GB)" : model,
         online ? "Baixar recomendado" : "Abrir Modelos", [&] {
             if (online && g_edit.backend == LlmBackend::Ollama) app.PullOllamaModel(llm::kRecommendedModel);
-            g_showModels = true;
-            g_focusNext = kModels;
+            OpenPanel(1);
         });
     row(stt, "Reconhecimento de voz", stt ? "Whisper carregado" : (app.SttLoading() ? "Carregando…" : "Baixe o modelo Whisper small (466 MB)"),
-        app.SttLoading() ? nullptr : "Baixar", [&] { app.DownloadWhisper("small"); g_showModels = true; g_focusNext = kModels; });
+        app.SttLoading() ? nullptr : "Baixar", [&] { app.DownloadWhisper("small"); OpenPanel(2); });
     row(ptVoice, "Voz em português", ptVoice ? voice : "Instale uma voz pt-BR: Configurações do Windows > Hora e idioma > Fala",
         "Abrir", [&] { ShellExecuteW(nullptr, L"open", L"ms-settings:speech", nullptr, nullptr, SW_SHOWNORMAL); });
     w::EndCard();
@@ -607,6 +605,63 @@ void ThinkingSection(Message& m) {
     ImGui::PopID();
 }
 
+// Passos de ferramenta (pesquisa, leitura de página, skill, treino) dentro da resposta.
+void ToolEventsView(const Message& m) {
+    if (m.toolEvents.empty()) return;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImGui::PushFont(theme::fonts.caption);
+    float lh = ImGui::GetTextLineHeight();
+    for (size_t i = 0; i < m.toolEvents.size(); ++i) {
+        const ToolEvent& ev = m.toolEvents[i];
+        ImGui::PushID((int)i + 7000);
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        Icon ic = ev.name == "web_search" ? Icon::Search : ev.name == "open_url" ? Icon::File : ev.name == "use_skill" ? Icon::Sparkle
+                : (ev.name == "start_timer" || ev.name == "create_workout") ? Icon::Clock : Icon::Info;
+        ImVec4 col = ev.status == 2 ? theme::Red : ev.status == 1 ? theme::Cyan : theme::Amber;
+        if (ev.status == 0) {
+            float a0 = anim::Time() * 6.f;
+            dl->PathArcTo(ImVec2(p.x + lh * 0.5f, p.y + lh * 0.5f), lh * 0.42f, a0, a0 + 4.f, 16);
+            dl->PathStroke(anim::Col(col), 0, px(1.6f));
+        } else {
+            w::DrawIcon(dl, ic, ImVec2(p.x + lh * 0.5f, p.y + lh * 0.5f), lh * 0.95f, anim::Col(col));
+        }
+        ImGui::SetCursorScreenPos(ImVec2(p.x + lh + px(8), p.y));
+        ImGui::PushStyleColor(ImGuiCol_Text, ev.status == 2 ? theme::Red : theme::TextDim);
+        ImGui::TextUnformatted(ev.label.c_str());
+        ImGui::PopStyleColor();
+        // fontes clicáveis
+        int shown = 0;
+        for (auto& src : ev.sources) {
+            if (shown >= 4 || src.second.empty()) break;
+            ImGui::SetCursorScreenPos(ImVec2(p.x + lh + px(8), ImGui::GetCursorScreenPos().y));
+            std::string host = src.second;
+            size_t s = host.find("://");
+            if (s != std::string::npos) host = host.substr(s + 3);
+            host = host.substr(0, host.find('/'));
+            std::string label = (src.first.empty() ? host : src.first);
+            if (label.size() > 70) label = label.substr(0, 67) + "…";
+            label += "  ·  " + host;
+            ImGui::PushID(shown);
+            ImVec2 lp = ImGui::GetCursorScreenPos();
+            ImVec2 ls = ImGui::CalcTextSize(label.c_str());
+            bool click = ImGui::InvisibleButton("##src", ImVec2(std::min(ls.x, ImGui::GetContentRegionAvail().x), ls.y));
+            bool hov = ImGui::IsItemHovered();
+            if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            dl->PushClipRect(lp, ImVec2(lp.x + ImGui::GetContentRegionAvail().x + ls.x, lp.y + ls.y), true);
+            dl->AddText(lp, anim::Col(hov ? theme::Text : theme::Cyan), label.c_str());
+            dl->PopClipRect();
+            if (hov) dl->AddLine(ImVec2(lp.x, lp.y + ls.y), ImVec2(lp.x + ls.x, lp.y + ls.y), anim::Col(theme::Cyan), px(1));
+            w::Tooltip(src.second.c_str());
+            if (click) platform::OpenUrl(src.second);
+            ImGui::PopID();
+            ++shown;
+        }
+        ImGui::PopID();
+    }
+    ImGui::PopFont();
+    ImGui::Dummy(ImVec2(0, px(4)));
+}
+
 void MessageView(App& app, Message& m, float width) {
     (void)app;
     if (m.parsedLen != m.text.size()) {
@@ -689,7 +744,7 @@ void MessageView(App& app, Message& m, float width) {
         }
         if (onlyText) bw = std::min(maxW, widest + pad * 2 + px(24));
         if (m.streaming && m.text.empty()) bw = px(90);
-        if (g_edit.showThinking && !m.thinking.empty()) bw = maxW;
+        if ((g_edit.showThinking && !m.thinking.empty()) || !m.toolEvents.empty()) bw = maxW;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, px(11)));
         ImGui::BeginChild(id, ImVec2(bw, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -704,6 +759,7 @@ void MessageView(App& app, Message& m, float width) {
         dl->AddRectFilled(a, ImVec2(a.x + px(3), b.y), anim::Col(m.error ? theme::Red : theme::Cyan), r, ImDrawFlags_RoundCornersBottomLeft);
         bool showThink = g_edit.showThinking && !m.thinking.empty();
         if (showThink) ThinkingSection(m);
+        ToolEventsView(m);
         if (m.streaming && m.text.empty() && showThink) {
             // ainda pensando: o bloco de pensamento já mostra a animação
         } else if (m.streaming && m.text.empty()) {
@@ -735,6 +791,194 @@ void MessageView(App& app, Message& m, float width) {
     ImGui::Dummy(ImVec2(0, px(4)));
 }
 
+// ------------------------------------------------------------------ Escolher o que transmitir
+struct PickerState {
+    std::mutex mtx;
+    std::vector<CaptureSource> list;
+    bool ready = false;
+};
+std::shared_ptr<PickerState> g_pick;
+bool g_pickOpenReq = false;
+int g_pickTab = 0, g_pickSel = -1;
+
+void FreePickerTextures() {
+    if (!g_pick) return;
+    std::lock_guard<std::mutex> l(g_pick->mtx);
+    for (auto& s : g_pick->list)
+        if (s.thumb && s.thumb->tex) { GLuint t = s.thumb->tex; glDeleteTextures(1, &t); s.thumb->tex = 0; }
+}
+
+void RefreshPicker() {
+    FreePickerTextures();
+    auto st = std::make_shared<PickerState>();
+    g_pick = st;
+    g_pickSel = -1;
+    std::thread([st] {
+        auto l = screencap::List(true);
+        std::lock_guard<std::mutex> g(st->mtx);
+        st->list = std::move(l);
+        st->ready = true;
+    }).detach();
+}
+
+void OpenSharePicker() {
+    RefreshPicker();
+    g_pickOpenReq = true;
+}
+
+// Cartão com miniatura; devolve 1 = clique, 2 = duplo clique.
+int SourceCard(CaptureSource& s, bool selected, float cw, float ch) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    int r = 0;
+    if (ImGui::InvisibleButton("##card", ImVec2(cw, ch))) r = 1;
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) r = 2;
+    float hov = anim::To(ImGui::GetItemID(), ImGui::IsItemHovered() ? 1.f : 0.f, 14.f);
+    ImVec2 b(p.x + cw, p.y + ch);
+    dl->AddRectFilled(p, b, anim::Col(anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), ImVec4(0.15f, 0.17f, 0.21f, 1.f), hov)), px(8));
+    if (selected) dl->AddRect(p, b, anim::Col(theme::Cyan), px(8), 0, px(2));
+    // miniatura (16:10, com a imagem ajustada dentro)
+    float pad = px(8);
+    ImVec2 ta(p.x + pad, p.y + pad), tb(b.x - pad, p.y + pad + (cw - pad * 2) * 0.625f);
+    dl->AddRectFilled(ta, tb, anim::Col(ImVec4(0.04f, 0.045f, 0.055f, 1.f)), px(5));
+    if (s.thumb && !s.thumb->rgba.empty()) {
+        if (!s.thumb->tex) s.thumb->tex = UploadTexture(0, s.thumb->rgba.data(), s.thumb->w, s.thumb->h);
+        float bw = tb.x - ta.x, bh = tb.y - ta.y;
+        float sc = std::min(bw / s.thumb->w, bh / s.thumb->h);
+        float iw = s.thumb->w * sc, ih = s.thumb->h * sc;
+        ImVec2 ia(ta.x + (bw - iw) * 0.5f, ta.y + (bh - ih) * 0.5f);
+        dl->AddImageRounded((ImTextureID)(intptr_t)s.thumb->tex, ia, ImVec2(ia.x + iw, ia.y + ih), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, px(4));
+    } else {
+        ImVec2 c((ta.x + tb.x) * 0.5f, (ta.y + tb.y) * 0.5f);
+        w::DrawIcon(dl, s.kind == CaptureSource::Monitor ? Icon::Monitor : Icon::Grid, ImVec2(c.x, c.y - px(8)), px(26), anim::Col(theme::TextFaint));
+        ImGui::PushFont(theme::fonts.caption);
+        const char* t = s.minimized ? "minimizada" : "sem prévia";
+        ImVec2 ts = ImGui::CalcTextSize(t);
+        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y + px(14)), anim::Col(theme::TextFaint), t);
+        ImGui::PopFont();
+    }
+    // nome (cortado com reticências)
+    auto fit = [](std::string t, float maxW) {
+        if (ImGui::CalcTextSize(t.c_str()).x <= maxW) return t;
+        while (!t.empty() && ImGui::CalcTextSize((t + "…").c_str()).x > maxW) {
+            t.pop_back();
+            while (!t.empty() && ((unsigned char)t.back() & 0xC0) == 0x80) t.pop_back(); // não corta no meio de um caractere UTF-8
+        }
+        return t + "…";
+    };
+    float tx = p.x + pad, tw = cw - pad * 2;
+    ImGui::PushFont(theme::fonts.semibold);
+    dl->AddText(ImVec2(tx, tb.y + px(7)), anim::Col(theme::Text), fit(s.name, tw).c_str());
+    float nh = ImGui::GetTextLineHeight();
+    ImGui::PopFont();
+    ImGui::PushFont(theme::fonts.caption);
+    std::string sub = s.kind == CaptureSource::Monitor ? std::to_string(s.w) + " × " + std::to_string(s.h) : s.app;
+    dl->AddText(ImVec2(tx, tb.y + px(9) + nh), anim::Col(theme::TextDim), fit(sub, tw).c_str());
+    ImGui::PopFont();
+    if (ImGui::IsItemHovered() && s.kind == CaptureSource::Window) w::Tooltip(s.name.c_str());
+    return r;
+}
+
+void SharePicker(App& app) {
+    const char* id = "Compartilhar com o KB###sharepick";
+    if (g_pickOpenReq) { ImGui::OpenPopup(id); g_pickOpenReq = false; }
+    ImGuiViewport* mv = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(mv->Pos.x + mv->Size.x * 0.5f, mv->Pos.y + mv->Size.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(std::min(px(860), mv->Size.x - px(60)), std::min(px(620), mv->Size.y - px(60))), ImGuiCond_Appearing);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(20), px(16)));
+    bool open = true;
+    if (!ImGui::BeginPopupModal(id, &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+        ImGui::PopStyleVar();
+        if (g_pick && !ImGui::IsPopupOpen(id)) { FreePickerTextures(); g_pick.reset(); }
+        return;
+    }
+    ImGui::PopStyleVar();
+    ImGui::PushFont(theme::fonts.caption);
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::TextDim);
+    ImGui::TextUnformatted("Escolha a tela inteira ou uma janela. O KB vê só o que você escolher, cerca de uma vez por segundo.");
+    ImGui::PopStyleColor();
+    ImGui::PopFont();
+    ImGui::Dummy(ImVec2(0, px(4)));
+
+    std::shared_ptr<PickerState> st = g_pick;
+    bool ready = false;
+    if (st) { std::lock_guard<std::mutex> l(st->mtx); ready = st->ready; }
+    int nMon = 0, nWin = 0;
+    if (ready)
+        for (auto& s : st->list) (s.kind == CaptureSource::Monitor ? nMon : nWin)++;
+    std::string l0 = "Telas (" + std::to_string(nMon) + ")", l1 = "Janelas (" + std::to_string(nWin) + ")";
+    const char* labels[] = {l0.c_str(), l1.c_str()};
+    ImGui::SetNextItemWidth(px(320));
+    ImGui::PushID("pk");
+    {
+        // segmentado mais estreito, alinhado à esquerda
+        ImGui::BeginChild("##seg", ImVec2(px(320), ImGui::GetFrameHeight() + px(2)), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
+        if (Segmented("src", &g_pickTab, labels, 2)) g_pickSel = -1;
+        ImGui::EndChild();
+    }
+    ImGui::PopID();
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - px(36));
+    if (w::IconButton("refresh", Icon::Refresh, px(32), "Atualizar a lista")) RefreshPicker();
+    ImGui::Dummy(ImVec2(0, px(4)));
+
+    float footH = px(62);
+    ImGui::BeginChild("##grid", ImVec2(0, -footH), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground);
+    CaptureSource chosen;
+    bool start = false;
+    if (!ready) {
+        ImVec2 a = ImGui::GetContentRegionAvail();
+        ImGui::SetCursorPos(ImVec2(a.x * 0.5f - px(12), a.y * 0.4f));
+        w::Spinner("pkspin", px(12), px(2.5f), theme::Cyan);
+    } else {
+        std::lock_guard<std::mutex> l(st->mtx);
+        float avail = ImGui::GetContentRegionAvail().x;
+        float gap = px(12);
+        int cols = std::max(1, (int)((avail + gap) / (px(200) + gap)));
+        float cw = (avail - gap * (cols - 1)) / cols;
+        float ch = (cw - px(16)) * 0.625f + px(16) + px(44);
+        int col = 0, shown = 0;
+        for (size_t i = 0; i < st->list.size(); ++i) {
+            auto& s = st->list[i];
+            if ((int)s.kind != g_pickTab) continue;
+            ImGui::PushID((int)i);
+            if (col > 0) ImGui::SameLine(0, gap);
+            int r = SourceCard(s, g_pickSel == (int)i, cw, ch);
+            if (r) g_pickSel = (int)i;
+            if (r == 2) { chosen = s; start = true; }
+            ImGui::PopID();
+            ++shown;
+            if (++col >= cols) { col = 0; ImGui::Dummy(ImVec2(0, gap - ImGui::GetStyle().ItemSpacing.y)); }
+        }
+        if (!shown) w::Hint(g_pickTab == 0 ? "Nenhuma tela encontrada." : "Nenhuma janela aberta para compartilhar.");
+        if (g_pickSel >= 0 && g_pickSel < (int)st->list.size() && !start && ImGui::IsKeyPressed(ImGuiKey_Enter)) { chosen = st->list[g_pickSel]; start = true; }
+    }
+    ImGui::EndChild();
+
+    // rodapé
+    ImGui::Dummy(ImVec2(0, px(6)));
+    float bw = px(140);
+    ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - bw * 2 - px(10));
+    if (w::GhostButton("Cancelar", ImVec2(bw, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) open = false;
+    ImGui::SameLine(0, px(10));
+    bool can = ready && g_pickSel >= 0;
+    ImGui::BeginDisabled(!can);
+    if (w::PrimaryButton("Compartilhar", ImVec2(bw, 0), Icon::Monitor) && can) {
+        std::lock_guard<std::mutex> l(st->mtx);
+        if (g_pickSel < (int)st->list.size()) { chosen = st->list[g_pickSel]; start = true; }
+    }
+    ImGui::EndDisabled();
+    if (start) {
+        app.StartScreenShare(chosen);
+        open = false;
+    }
+    if (!open) {
+        ImGui::CloseCurrentPopup();
+        FreePickerTextures();
+        g_pick.reset();
+    }
+    ImGui::EndPopup();
+}
+
 void InputBar(App& app) {
     ImVec2 p = ImGui::GetCursorScreenPos();
     float wdt = ImGui::GetContentRegionAvail().x;
@@ -757,8 +1001,10 @@ void InputBar(App& app) {
     }
     ImGui::SameLine(0, px(2));
     bool sharing = app.Screen().Active();
-    if (w::IconButton("screen", Icon::Monitor, sb, sharing ? "Parar de compartilhar a tela" : "Compartilhar a tela com o KB (ao vivo)", sharing, theme::Red))
-        app.SetScreenShare(!sharing);
+    if (w::IconButton("screen", Icon::Monitor, sb, sharing ? "Parar de compartilhar a tela" : "Compartilhar uma tela ou janela com o KB (ao vivo)", sharing, theme::Red)) {
+        if (sharing) app.SetScreenShare(false);
+        else OpenSharePicker();
+    }
     float inX = p.x + px(10) + sb * 2 + px(8);
 
     ImGui::SetCursorScreenPos(ImVec2(inX, p.y + (h - ImGui::GetFrameHeight()) * 0.5f));
@@ -998,7 +1244,22 @@ void ChatWindow(App& app) {
             float pulse = 0.5f + 0.5f * std::sin(anim::Time() * 4.f);
             fdl->AddCircleFilled(ImVec2(pp.x + px(10), pp.y + ph + px(12)), px(4.5f), anim::Col(anim::WithAlpha(theme::Red, 0.6f + 0.4f * pulse)), 16);
             ImGui::PushFont(theme::fonts.caption);
-            fdl->AddText(ImVec2(pp.x + px(20), pp.y + ph + px(4)), anim::Col(theme::Text), "AO VIVO · o KB vê sua tela");
+            {
+                std::string cap = "AO VIVO · " + app.Screen().SourceName();
+                if (app.Screen().SourceLost()) cap = "A janela foi fechada";
+                float maxW = pw - px(70);
+                while (cap.size() > 4 && ImGui::CalcTextSize(cap.c_str()).x > maxW) {
+                    cap.pop_back();
+                    while (!cap.empty() && ((unsigned char)cap.back() & 0xC0) == 0x80) cap.pop_back();
+                }
+                fdl->AddText(ImVec2(pp.x + px(20), pp.y + ph + px(4)), anim::Col(theme::Text), cap.c_str());
+            }
+            ImGui::PopFont();
+            ImGui::SetCursorScreenPos(ImVec2(pp.x + pw - px(46), pp.y + ph + px(1)));
+            ImGui::PushFont(theme::fonts.caption);
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::Cyan);
+            if (ImGui::Selectable("Trocar##swap", false, 0, ImGui::CalcTextSize("Trocar"))) OpenSharePicker();
+            ImGui::PopStyleColor();
             ImGui::PopFont();
             fdl->AddRect(ImVec2(pp.x - px(4), pp.y - px(4)), ImVec2(pp.x + pw + px(4), pp.y + ph + px(28)), anim::Col(anim::WithAlpha(theme::Red, 0.35f + 0.3f * pulse)), px(12), 0, px(1.5f));
             ImGui::SetCursorScreenPos(ImVec2(pp.x + pw - px(26), pp.y + px(2)));
@@ -1007,13 +1268,12 @@ void ChatWindow(App& app) {
     }
     ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + avail.y - inputH));
     InputBar(app);
+    SharePicker(app);
     ImGui::End();
 }
 
 // ------------------------------------------------------------------ Embeds
-void EmbedsWindow(App& app) {
-    if (!BeginPanel(kEmbeds, &g_showEmbeds, 0, theme::Amber)) { ImGui::End(); return; }
-    TrackFocus(1);
+void EmbedsContent(App& app) {
     std::vector<std::pair<int, Block>> items;
     {
         std::lock_guard<std::mutex> l(app.MessagesMutex());
@@ -1049,7 +1309,6 @@ void EmbedsWindow(App& app) {
             ImGui::Spacing();
         }
     }
-    ImGui::End();
 }
 
 // ------------------------------------------------------------------ Modelos
@@ -1120,10 +1379,9 @@ bool ModelRow(const ModelInfo& m, bool active, int idx) {
     return click;
 }
 
-void ModelsWindow(App& app) {
-    if (!BeginPanel(kModels, &g_showModels, 0, theme::Violet)) { ImGui::End(); return; }
-    TrackFocus(2);
+void ModelsContent(App& app, bool voice) {
     bool online = app.BackendOnline();
+    if (!voice) {
 
     w::SectionTitle("Servidor de IA", Icon::Cpu);
     {
@@ -1290,6 +1548,8 @@ void ModelsWindow(App& app) {
         }
     }
 
+    }
+    if (voice) {
     w::SectionTitle("Reconhecimento de voz (Whisper)", Icon::Mic);
     {
         w::StatusDot(app.SttLoaded() ? theme::Green : app.SttLoading() ? theme::Amber : theme::Red, app.SttLoading());
@@ -1340,8 +1600,7 @@ void ModelsWindow(App& app) {
             if (!f.empty()) { g_edit.whisperModel = f; Apply(app); }
         }
     }
-    ImGui::Dummy(ImVec2(0, px(20)));
-    ImGui::End();
+    }
 }
 
 // ------------------------------------------------------------------ Celular (QR code)
@@ -1441,11 +1700,9 @@ void MobileSection(App& app, bool& ch) {
 }
 
 // ------------------------------------------------------------------ Configurações
-void SettingsWindow(App& app) {
-    if (!BeginPanel(kSettings, &g_showSettings, 0, theme::Cyan)) { ImGui::End(); return; }
-    TrackFocus(3);
+void SettingsContent(App& app, int part) {
     bool ch = false;
-
+    if (part == 0) {
     w::SectionTitle("Geral", Icon::Gear);
     ch |= w::Toggle("Iniciar com o Windows", &g_edit.startWithWindows, "Abre o KB automaticamente quando você liga o PC");
     if (g_edit.startWithWindows) ch |= w::Toggle("   Iniciar minimizada na bandeja", &g_edit.startMinimized);
@@ -1477,6 +1734,8 @@ void SettingsWindow(App& app) {
         ImGui::EndCombo();
     }
 
+    }
+    if (part == 2) {
     w::SectionTitle("Fala", Icon::Wave);
     ch |= w::Toggle("Responder em voz alta", &g_edit.speakReplies);
     auto voices = app.Voices();
@@ -1537,6 +1796,8 @@ void SettingsWindow(App& app) {
         }
     }
 
+    }
+    if (part == 1) {
     w::SectionTitle("Inteligência", Icon::Sparkle);
     ImGui::SetNextItemWidth(-1);
     ImGui::SliderFloat("##temp", &g_edit.temperature, 0.f, 1.2f, "Criatividade (temperatura): %.2f");
@@ -1550,14 +1811,173 @@ void SettingsWindow(App& app) {
     ch |= w::Toggle("Trocar para um modelo com visão quando houver imagem", &g_edit.autoVisionModel,
                     "Ex.: o mistral-nemo não enxerga imagens; o KB usa automaticamente um modelo com visão que você tenha.");
 
-    MobileSection(app, ch);
-
+    }
+    if (part == 3) MobileSection(app, ch);
+    if (part == 0) {
     w::SectionTitle("Sobre", Icon::Info);
-    w::Hint("KB 1.0 — assistente de voz local. Seus dados ficam no seu PC.");
+    w::Hint("KB %s — assistente de voz local. Seus dados ficam no seu PC.", install::kVersion);
     if (w::GhostButton("Abrir pasta de dados", ImVec2(0, 0), Icon::Folder)) platform::OpenFolder(config::AppDataDir());
     ImGui::Dummy(ImVec2(0, px(20)));
-
+    }
     if (ch) Apply(app);
+}
+
+// ------------------------------------------------------------------ Skills
+void SkillsContent(App& app) {
+    bool ch = false;
+    w::SectionTitle("Ferramentas da IA", Icon::Search);
+    ch |= w::Toggle("Pesquisar na internet", &g_edit.webTools, "A IA pode pesquisar na web e ler páginas quando precisar de informação atual.");
+    w::Hint("Funciona melhor com modelos que aceitam ferramentas (ex.: mistral-nemo, qwen3.5). Os outros pesquisam quando você pede \"pesquise…\".");
+
+    w::SectionTitle("Skills", Icon::Sparkle);
+    w::Hint("Skills são instruções que a IA carrega quando o pedido combina com elas. Cada skill é um arquivo .md que você pode editar.");
+    static std::vector<skills::Skill> list;
+    static double loaded = -100;
+    if (NowSeconds() - loaded > 2.0) { list = skills::LoadAll(g_edit.disabledSkills); loaded = NowSeconds(); }
+    for (size_t i = 0; i < list.size(); ++i) {
+        auto& sk = list[i];
+        ImGui::PushID((int)i + 9000);
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        float rowW = ImGui::GetContentRegionAvail().x;
+        ImGui::PushFont(theme::fonts.caption);
+        float descH = ImGui::CalcTextSize(sk.description.c_str(), nullptr, false, rowW - px(140)).y;
+        ImGui::PopFont();
+        float rowH = ImGui::GetTextLineHeight() + descH + px(18);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p, ImVec2(p.x + rowW, p.y + rowH), anim::Col(ImVec4(0.118f, 0.133f, 0.161f, 1.f)), px(6));
+        dl->AddRectFilled(p, ImVec2(p.x + px(3), p.y + rowH), anim::Col(sk.enabled ? theme::Cyan : theme::TextFaint), px(6), ImDrawFlags_RoundCornersLeft);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + px(14), p.y + px(7)));
+        ImGui::PushFont(theme::fonts.semibold);
+        ImGui::TextUnformatted(sk.name.c_str());
+        ImGui::PopFont();
+        ImGui::SetCursorScreenPos(ImVec2(p.x + px(14), ImGui::GetCursorScreenPos().y));
+        ImGui::PushFont(theme::fonts.caption);
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::TextDim);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + rowW - px(140));
+        ImGui::TextUnformatted(sk.description.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+        // ações à direita
+        float bs = px(30);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + rowW - bs * 2 - px(70), p.y + (rowH - ImGui::GetFrameHeight()) * 0.5f));
+        bool en = sk.enabled;
+        ImGui::PushID("tg");
+        {
+            // interruptor compacto
+            float hgt = ImGui::GetFrameHeight() * 0.62f, wdt = hgt * 1.8f;
+            ImVec2 tp = ImGui::GetCursorScreenPos();
+            tp.y += (ImGui::GetFrameHeight() - hgt) * 0.5f;
+            if (ImGui::InvisibleButton("##t", ImVec2(wdt, ImGui::GetFrameHeight()))) en = !en;
+            float t = anim::Spring(ImGui::GetItemID(), en ? 1.f : 0.f, 300.f, 26.f);
+            dl->AddRectFilled(tp, ImVec2(tp.x + wdt, tp.y + hgt), anim::Col(anim::Lerp(ImVec4(0.2f, 0.22f, 0.26f, 1), theme::Cyan, anim::Clamp01(t))), hgt * 0.5f);
+            dl->AddCircleFilled(ImVec2(tp.x + hgt * 0.5f + (wdt - hgt) * t, tp.y + hgt * 0.5f), hgt * 0.5f - px(2.5f), IM_COL32_WHITE, 20);
+            w::Tooltip(en ? "Ativada" : "Desativada");
+        }
+        ImGui::PopID();
+        ImGui::SameLine(0, px(10));
+        if (w::IconButton("edit", Icon::File, bs, "Editar no Bloco de Notas"))
+            ShellExecuteW(nullptr, L"open", L"notepad.exe", text::Widen("\"" + sk.path + "\"").c_str(), nullptr, SW_SHOWNORMAL);
+        ImGui::SameLine(0, px(4));
+        if (w::IconButton("del", Icon::Trash, bs, "Apagar (vai para a Lixeira)")) {
+            std::wstring from = text::Widen(sk.path);
+            from.push_back(0);
+            SHFILEOPSTRUCTW op{};
+            op.wFunc = FO_DELETE;
+            op.pFrom = from.c_str();
+            op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT;
+            SHFileOperationW(&op);
+            loaded = -100;
+        }
+        if (en != sk.enabled) {
+            auto& d = g_edit.disabledSkills;
+            d.erase(std::remove(d.begin(), d.end(), sk.name), d.end());
+            if (!en) d.push_back(sk.name);
+            loaded = -100;
+            ch = true;
+        }
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + rowH + px(6)));
+        ImGui::Dummy(ImVec2(0, 0));
+        ImGui::PopID();
+    }
+    if (w::PrimaryButton("Nova skill", ImVec2(0, 0), Icon::Sparkle)) {
+        std::string path = skills::NewSkillTemplate();
+        ShellExecuteW(nullptr, L"open", L"notepad.exe", text::Widen("\"" + path + "\"").c_str(), nullptr, SW_SHOWNORMAL);
+        loaded = -100;
+    }
+    ImGui::SameLine();
+    if (w::GhostButton("Abrir pasta", ImVec2(0, 0), Icon::Folder)) platform::OpenFolder(skills::Dir());
+    ImGui::SameLine();
+    if (w::GhostButton("Recarregar", ImVec2(0, 0), Icon::Refresh)) loaded = -100;
+    w::Hint("Peça por voz: \"KB, monta um treino de Muay Thai pra mim\" — a IA usa a skill treino-muay-thai.");
+    if (ch) Apply(app);
+}
+
+// ------------------------------------------------------------------ Painel (janela flutuante com abas)
+int g_panelTab = 0;
+const char* kPanel = "Painel do KB###panel";
+const char* kTimerWin = "Timer###timer2";
+
+void OpenPanel(int tab) {
+    g_showPanel = true;
+    g_panelTab = tab;
+    g_focusNext = kPanel;
+}
+
+// Posição inicial de uma janela flutuante: ao lado direito da janela principal (dentro da tela).
+void PlaceFloating(ImVec2 size, int slot) {
+    ImGuiViewport* mv = ImGui::GetMainViewport();
+    ImVec2 pos(mv->Pos.x + mv->Size.x - size.x - px(24) - slot * px(30), mv->Pos.y + px(70) + slot * px(30));
+    ImGuiWindowClass wc;
+    wc.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge; // sempre uma janela própria do Windows
+    ImGui::SetNextWindowClass(&wc);
+    ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
+}
+
+void PanelWindow(App& app) {
+    PlaceFloating(ImVec2(px(600), px(760)), 0);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(px(460), px(420)), ImVec2(FLT_MAX, FLT_MAX));
+    if (!BeginPanel(kPanel, &g_showPanel, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar, theme::Cyan)) { ImGui::End(); return; }
+    TrackFocus(1);
+    // abas internas
+    const char* tabs[] = {"Geral", "IA e modelos", "Voz", "Celular", "Skills", "Itens"};
+    const int n = (int)std::size(tabs);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float x = p.x, h = ImGui::GetFrameHeight() + px(6);
+    float ux = 0, uw = 0;
+    ImGui::PushFont(theme::fonts.semibold);
+    for (int i = 0; i < n; ++i) {
+        ImVec2 ts = ImGui::CalcTextSize(tabs[i]);
+        float wdt = ts.x + px(22);
+        ImGui::SetCursorScreenPos(ImVec2(x, p.y));
+        ImGui::PushID(i);
+        if (ImGui::InvisibleButton("##tab", ImVec2(wdt, h))) g_panelTab = i;
+        bool hov = ImGui::IsItemHovered();
+        ImGui::PopID();
+        ImVec4 c = g_panelTab == i ? theme::Text : hov ? theme::Text : theme::TextDim;
+        dl->AddText(ImVec2(x + px(11), p.y + (h - ts.y) * 0.5f), anim::Col(c), tabs[i]);
+        if (g_panelTab == i) { ux = x; uw = wdt; }
+        x += wdt;
+    }
+    ImGui::PopFont();
+    float sx = anim::Spring(ImGui::GetID("##tabx"), ux, 260.f, 26.f), sw = anim::Spring(ImGui::GetID("##tabw"), uw, 260.f, 26.f);
+    float avail = ImGui::GetContentRegionAvail().x;
+    dl->AddLine(ImVec2(p.x, p.y + h), ImVec2(p.x + avail, p.y + h), anim::Col(ImVec4(1, 1, 1, 0.07f)), px(1));
+    dl->AddRectFilled(ImVec2(sx + px(8), p.y + h - px(2)), ImVec2(sx + sw - px(8), p.y + h + px(1)), anim::Col(theme::Cyan), px(1));
+    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + h + px(6)));
+    ImGui::BeginChild("##panelbody", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground);
+    switch (g_panelTab) {
+    case 0: SettingsContent(app, 0); break;
+    case 1: SettingsContent(app, 1); ModelsContent(app, false); break;
+    case 2: SettingsContent(app, 2); ModelsContent(app, true); break;
+    case 3: SettingsContent(app, 3); break;
+    case 4: SkillsContent(app); break;
+    case 5: EmbedsContent(app); break;
+    }
+    ImGui::Dummy(ImVec2(0, px(16)));
+    ImGui::EndChild();
     ImGui::End();
 }
 
@@ -1777,7 +2197,7 @@ void Frame(App& app, bool mainVisible) {
     timer::Tick(app);
     if (int rt = app.requestTimer.exchange(0)) {
         g_showTimer = true;
-        g_focusNext = "Timer###timer";
+        g_focusNext = "Timer###timer2";
         if (rt == 2) timer::StartNow(app);
     }
     Config cfg = app.Cfg();
@@ -1790,8 +2210,12 @@ void Frame(App& app, bool mainVisible) {
     if (focusTest > 0 && --focusTest == 0) {
         if (const char* ft = getenv("KB_FOCUS")) {
             static std::string name = ft;
+            if (name == "share" || name == "sharewin") OpenSharePicker();
+            if (name == "sharewin") g_pickTab = 1;
+            if (name == "timerrun") { name = "timer"; timer::StartNow(app); }
             if (name == "timer") g_showTimer = true;
-            g_focusNext = name == "models" ? kModels : name == "embeds" ? kEmbeds : name == "timer" ? "Timer###timer" : kSettings;
+            if (name == "timer") g_focusNext = "Timer###timer2";
+            else if (name.rfind("share", 0) != 0) OpenPanel(name == "models" ? 1 : name == "voice" ? 2 : name == "mobile" ? 3 : name == "skills" ? 4 : name == "embeds" ? 5 : 0);
         }
     }
     if (g_focusNext) {
@@ -1804,16 +2228,12 @@ void Frame(App& app, bool mainVisible) {
         DrawBackdrop(ImGui::GetBackgroundDrawList(vp), vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y), g_orb.CurrentColor(), true);
         Host(app);
         ChatWindow(app);
-        if (g_showEmbeds) EmbedsWindow(app);
-        if (g_showModels) ModelsWindow(app);
-        if (g_showSettings) SettingsWindow(app);
+        if (g_showPanel) PanelWindow(app);
         if (g_showTimer) {
-            // na primeira vez, acopla o timer junto dos outros painéis
-            if (ImGuiWindow* sw = ImGui::FindWindowByName(kSettings); sw && sw->DockId)
-                ImGui::SetNextWindowDockID(sw->DockId, ImGuiCond_FirstUseEver);
+            PlaceFloating(ImVec2(px(520), px(820)), 1);
             timer::Window(app, &g_showTimer);
             ImGuiContext& gctx = *ImGui::GetCurrentContext();
-            if (ImGuiWindow* tw = ImGui::FindWindowByName("Timer###timer"); tw && gctx.NavWindow && gctx.NavWindow->RootWindow == tw) g_sel = 4;
+            if (ImGuiWindow* tw = ImGui::FindWindowByName("Timer###timer2"); tw && gctx.NavWindow && gctx.NavWindow->RootWindow == tw) g_sel = 2;
         }
         Toasts(app);
         if (cfg.splash && (GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) == 0 || GetEnvironmentVariableW(L"KB_SPLASH", nullptr, 0) > 0)) Splash(vp);

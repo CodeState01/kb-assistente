@@ -10,6 +10,13 @@ struct ChatMsg {
     std::string role;     // system | user | assistant
     std::string content;
     std::vector<std::string> imagesB64; // JPEG em base64 (modelos com visão)
+    std::string toolCallsJson;          // assistente: chamadas de ferramenta feitas (JSON)
+    std::string toolName;               // role "tool": qual ferramenta respondeu
+};
+
+struct ToolCall {
+    std::string name;
+    std::string argsJson;               // argumentos em JSON
 };
 
 struct ModelInfo {
@@ -17,6 +24,7 @@ struct ModelInfo {
     uint64_t size = 0;
     std::string details;  // família / quantização
     bool vision = false;  // enxerga imagens
+    bool tools = false;   // sabe chamar ferramentas (pesquisa na web, skills...)
     bool capsKnown = false;
 };
 
@@ -44,7 +52,8 @@ std::vector<ServerInfo> DetectServers();
 
 using TokenFn = std::function<bool(const std::string& piece)>;
 bool Chat(const Config& c, const std::string& model, const std::vector<ChatMsg>& msgs, const TokenFn& onToken,
-          std::string* err, std::atomic<bool>* cancel, const TokenFn& onThink = nullptr);
+          std::string* err, std::atomic<bool>* cancel, const TokenFn& onThink = nullptr,
+          const std::string& toolsJson = "", std::vector<ToolCall>* toolCalls = nullptr);
 
 using PullFn = std::function<void(const std::string& status, uint64_t completed, uint64_t total)>;
 bool OllamaPull(const std::string& baseUrl, const std::string& model, const PullFn& onProgress, std::string* err,

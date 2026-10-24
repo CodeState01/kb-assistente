@@ -279,167 +279,372 @@ void Tick(App& app) {
     if (rem <= 0) Advance(app);
 }
 
+namespace {
+ImVec4 PhaseColor(const Config& c, double rem) {
+    switch (g.phase) {
+    case Prep: return theme::Amber;
+    case Rest: return theme::Cyan;
+    case Done: return theme::Green;
+    case Round: return theme::Red;
+    default: return ImVec4(0.55f, 0.58f, 0.64f, 1.f);
+    }
+}
+
+const char* PhaseName() {
+    switch (g.phase) {
+    case Prep: return "PREPARE-SE";
+    case Round: return "LUTA";
+    case Rest: return "DESCANSO";
+    case Done: return "FIM DO TREINO";
+    default: return "PRONTO";
+    }
+}
+
+std::string NextLabel(const Config& c) {
+    switch (g.phase) {
+    case Prep: return "A seguir: round 1 · " + Clock(c.timerRoundSec);
+    case Round:
+        if (g.round >= c.timerRounds) return "Último round";
+        return c.timerRestSec > 0 ? "A seguir: descanso · " + Clock(c.timerRestSec) : "A seguir: round " + std::to_string(g.round + 1);
+    case Rest: return "A seguir: round " + std::to_string(g.round + 1) + " · " + Clock(c.timerRoundSec);
+    case Done: return "Bom trabalho!";
+    default: {
+        int total = c.timerRounds * c.timerRoundSec + std::max(0, c.timerRounds - 1) * c.timerRestSec + c.timerPrepSec;
+        return std::to_string(c.timerRounds) + " rounds de " + Clock(c.timerRoundSec) + " · treino de " + Clock(total);
+    }
+    }
+}
+
+// Botão redondo desenhado à mão. kind: 0 play, 1 pause, 2 reiniciar, 3 pular
+bool RoundButton(const char* id, int kind, float d, ImVec4 fill, bool solid, const char* tip) {
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    bool click = ImGui::InvisibleButton(id, ImVec2(d, d));
+    float hov = anim::To(ImGui::GetItemID(), ImGui::IsItemHovered() ? 1.f : 0.f, 14.f);
+    float press = ImGui::IsItemActive() ? 0.94f : 1.f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 c(p.x + d * 0.5f, p.y + d * 0.5f);
+    float r = d * 0.5f * press;
+    if (solid) {
+        dl->AddCircleFilled(c, r, anim::Col(anim::Lerp(fill, ImVec4(1, 1, 1, 1), hov * 0.12f)), 48);
+    } else {
+        dl->AddCircleFilled(c, r, anim::Col(anim::Lerp(ImVec4(0.13f, 0.145f, 0.175f, 1.f), ImVec4(0.18f, 0.2f, 0.24f, 1.f), hov)), 40);
+        dl->AddCircle(c, r - px(0.5f), anim::Col(ImVec4(1, 1, 1, 0.08f)), 40, px(1));
+    }
+    ImU32 ic = anim::Col(solid ? ImVec4(1, 1, 1, 1) : anim::Lerp(theme::TextDim, theme::Text, hov));
+    float s = d * 0.2f;
+    switch (kind) {
+    case 0: dl->AddTriangleFilled(ImVec2(c.x - s * 0.7f, c.y - s), ImVec2(c.x - s * 0.7f, c.y + s), ImVec2(c.x + s * 1.05f, c.y), ic); break;
+    case 1:
+        dl->AddRectFilled(ImVec2(c.x - s * 0.8f, c.y - s), ImVec2(c.x - s * 0.22f, c.y + s), ic, px(1.5f));
+        dl->AddRectFilled(ImVec2(c.x + s * 0.22f, c.y - s), ImVec2(c.x + s * 0.8f, c.y + s), ic, px(1.5f));
+        break;
+    case 2: w::DrawIcon(dl, Icon::Refresh, c, d * 0.42f, ic); break;
+    case 3:
+        dl->AddTriangleFilled(ImVec2(c.x - s * 0.9f, c.y - s * 0.85f), ImVec2(c.x - s * 0.9f, c.y + s * 0.85f), ImVec2(c.x + s * 0.45f, c.y), ic);
+        dl->AddRectFilled(ImVec2(c.x + s * 0.55f, c.y - s * 0.85f), ImVec2(c.x + s * 0.9f, c.y + s * 0.85f), ic, px(1));
+        break;
+    }
+    if (tip) w::Tooltip(tip);
+    return click;
+}
+
+// Caixinha com − valor + (segura para repetir). Retorna true se mudou.
+bool Stepper(const char* id, const char* label, int* v, int mn, int mx, int step, bool time, float wdt, const char* suffix = "") {
+    ImGui::PushID(id);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float h = px(78);
+    dl->AddRectFilled(p, ImVec2(p.x + wdt, p.y + h), anim::Col(ImVec4(0.118f, 0.133f, 0.161f, 1.f)), px(8));
+    ImGui::PushFont(theme::fonts.label);
+    dl->AddText(ImVec2(p.x + px(12), p.y + px(9)), anim::Col(theme::TextDim), label);
+    ImGui::PopFont();
+    char val[32];
+    if (time) {
+        if (*v == 0) snprintf(val, sizeof(val), "--");
+        else snprintf(val, sizeof(val), "%d:%02d", *v / 60, *v % 60);
+    } else snprintf(val, sizeof(val), "%d%s", *v, suffix);
+    ImFont* f = theme::fonts.title;
+    ImVec2 ts = f->CalcTextSizeA(f->FontSize * 1.15f, FLT_MAX, 0, val);
+    float cy = p.y + px(30) + (h - px(30)) * 0.5f;
+    dl->AddText(f, f->FontSize * 1.15f, ImVec2(p.x + (wdt - ts.x) * 0.5f, cy - ts.y * 0.5f), anim::Col(theme::Text), val);
+    bool changed = false;
+    float b = px(30);
+    ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
+    for (int side = 0; side < 2; ++side) {
+        ImVec2 bp(side == 0 ? p.x + px(10) : p.x + wdt - px(10) - b, cy - b * 0.5f);
+        ImGui::SetCursorScreenPos(bp);
+        ImGui::PushID(side);
+        bool can = side == 0 ? *v > mn : *v < mx;
+        if (ImGui::InvisibleButton("##b", ImVec2(b, b)) && can) {
+            int nv = side == 0 ? *v - step : *v + step;
+            // arredonda para o passo (ex.: 1:10 → 1:15 → 1:30)
+            nv = side == 0 ? (int)std::ceil(nv / (float)step) * step : (nv / step) * step;
+            *v = std::clamp(nv, mn, mx);
+            changed = true;
+        }
+        float hv = anim::To(ImGui::GetItemID(), ImGui::IsItemHovered() && can ? 1.f : 0.f, 14.f);
+        ImGui::PopID();
+        ImVec2 c(bp.x + b * 0.5f, bp.y + b * 0.5f);
+        dl->AddCircleFilled(c, b * 0.5f, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.05f), anim::WithAlpha(theme::Cyan, 0.9f), hv)), 28);
+        ImU32 ic = anim::Col(can ? theme::Text : theme::TextFaint);
+        float s = b * 0.22f, t = px(1.8f);
+        dl->AddRectFilled(ImVec2(c.x - s, c.y - t * 0.5f), ImVec2(c.x + s, c.y + t * 0.5f), ic);
+        if (side == 1) dl->AddRectFilled(ImVec2(c.x - t * 0.5f, c.y - s), ImVec2(c.x + t * 0.5f, c.y + s), ic);
+    }
+    ImGui::PopItemFlag();
+    ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + h));
+    ImGui::Dummy(ImVec2(wdt, 0));
+    ImGui::PopID();
+    return changed;
+}
+
+void SubTitle(const char* t) {
+    ImGui::Dummy(ImVec2(0, px(6)));
+    w::SectionTitle(t);
+}
+} // namespace
+
 void Window(App& app, bool* open) {
-    ImGui::SetNextWindowSizeConstraints(ImVec2(px(320), px(360)), ImVec2(FLT_MAX, FLT_MAX));
-    if (!ui::BeginPanel("Timer###timer", open, 0, theme::Red)) { ImGui::End(); return; }
+    ImGui::SetNextWindowSizeConstraints(ImVec2(px(360), px(420)), ImVec2(FLT_MAX, FLT_MAX));
+    if (!ui::BeginPanel("Timer###timer2", open, ImGuiWindowFlags_NoCollapse, theme::Red)) { ImGui::End(); return; }
     Config c = app.Cfg();
     bool ch = false;
+    const bool live = g.phase != Stopped && g.phase != Done;  // treinando: só o relógio, grande
+    const bool running = Running();
 
-    // ---- relógio
     float avail = ImGui::GetContentRegionAvail().x;
-    float R = std::min(avail * 0.36f, px(150));
-    ImVec2 p0 = ImGui::GetCursorScreenPos();
-    ImVec2 cc(p0.x + avail * 0.5f, p0.y + R + px(16));
-    ImGui::Dummy(ImVec2(avail, R * 2 + px(36)));
+    double rem = g.phase == Stopped ? c.timerRoundSec : g.phase == Done ? 0.0 : Remaining();
+    ImVec4 col = PhaseColor(c, rem);
+    bool warn = g.phase == Round && c.timerWarnSec > 0 && rem <= c.timerWarnSec && rem > 0;
+    float flash = warn && running ? 0.5f + 0.5f * std::sin(anim::Time() * 9.f) : 0.f;
+    col = anim::Lerp(col, warn ? theme::Amber : col, flash);
+    ImVec4 colS(anim::To(ImGui::GetID("##cr"), col.x, 8.f), anim::To(ImGui::GetID("##cg"), col.y, 8.f),
+                anim::To(ImGui::GetID("##cb"), col.z, 8.f), 1.f);
+
+    // ---------------------------------------------------------- placar
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    double rem = g.phase == Stopped ? c.timerRoundSec : Remaining();
-    float frac = g.phase == Stopped || g.phaseLen <= 0 ? 1.f : (float)(rem / g.phaseLen);
-    ImVec4 col = g.phase == Prep ? theme::Amber : g.phase == Rest ? theme::Blue : g.phase == Done ? theme::Violet : theme::Green;
-    if (g.phase == Round && c.timerWarnSec > 0 && rem <= c.timerWarnSec) col = theme::Red;
-    float shown = anim::To(ImGui::GetID("##tfrac"), frac, 10.f);
-    float pulse = (g.phase == Round && rem <= c.timerWarnSec) ? 0.5f + 0.5f * std::sin(anim::Time() * 10.f) : 0.f;
-    orbfx::RadialGradient(dl, cc, R * 0.7f, R * (1.35f + 0.08f * pulse), anim::Col(anim::WithAlpha(col, 0.18f + 0.15f * pulse)), anim::Col(anim::WithAlpha(col, 0)), 64);
-    dl->AddCircle(cc, R, anim::Col(ImVec4(1, 1, 1, 0.08f)), 96, px(10));
-    if (shown > 0.001f) {
-        dl->PathArcTo(cc, R, -PI * 0.5f, -PI * 0.5f + 2 * PI * shown, 96);
-        dl->PathStroke(anim::Col(col), 0, px(10));
-        float ea = -PI * 0.5f + 2 * PI * shown;
-        ImVec2 tip(cc.x + std::cos(ea) * R, cc.y + std::sin(ea) * R);
-        dl->AddCircleFilled(tip, px(9), anim::Col(ImVec4(1, 1, 1, 0.95f)), 20);
-        orbfx::RadialGradient(dl, tip, 0, px(26), anim::Col(anim::WithAlpha(col, 0.6f)), anim::Col(anim::WithAlpha(col, 0)), 24);
+    float ctrlH = px(96);
+    float cardH = live ? std::max(px(300), ImGui::GetContentRegionAvail().y - ctrlH - px(8)) : px(290);
+    ImVec2 a = ImGui::GetCursorScreenPos(), b(a.x + avail, a.y + cardH);
+    ImGui::Dummy(ImVec2(avail, cardH));
+    float rad = px(10);
+    dl->AddRectFilled(a, b, anim::Col(ImVec4(0.067f, 0.072f, 0.086f, 1.f)), rad);
+    // brilho da fase vindo de cima
+    dl->AddRectFilledMultiColor(ImVec2(a.x, a.y + px(40)), ImVec2(b.x, a.y + cardH * 0.75f),
+                                anim::Col(anim::WithAlpha(colS, 0.16f + 0.10f * flash)), anim::Col(anim::WithAlpha(colS, 0.16f + 0.10f * flash)),
+                                anim::Col(anim::WithAlpha(colS, 0.f)), anim::Col(anim::WithAlpha(colS, 0.f)));
+    dl->AddRect(a, b, anim::Col(anim::WithAlpha(colS, 0.35f)), rad, 0, px(1));
+    // faixa da fase
+    float bandH = px(40);
+    dl->AddRectFilled(a, ImVec2(b.x, a.y + bandH), anim::Col(anim::WithAlpha(colS, 0.92f)), rad, ImDrawFlags_RoundCornersTop);
+    ImGui::PushFont(theme::fonts.title);
+    {
+        const char* pn = PhaseName();
+        ImVec2 ts = ImGui::CalcTextSize(pn);
+        dl->AddText(ImVec2(a.x + px(16), a.y + (bandH - ts.y) * 0.5f), IM_COL32(255, 255, 255, 255), pn);
+        char rl[32];
+        if (g.phase == Stopped) snprintf(rl, sizeof(rl), "%d ROUNDS", c.timerRounds);
+        else snprintf(rl, sizeof(rl), "ROUND %d/%d", std::clamp(g.round, 1, c.timerRounds), c.timerRounds);
+        ImVec2 rs = ImGui::CalcTextSize(rl);
+        dl->AddText(ImVec2(b.x - rs.x - px(16), a.y + (bandH - rs.y) * 0.5f), IM_COL32(255, 255, 255, 230), rl);
     }
-    // partículas girando em volta do relógio
-    for (int i = 0; i < 60; ++i) {
-        float a = i * 2 * PI / 60 + anim::Time() * (Running() ? 0.6f : 0.15f);
-        float rr = R * (1.12f + 0.05f * std::sin(i * 1.7f + anim::Time() * 2.f));
-        dl->AddCircleFilled(ImVec2(cc.x + std::cos(a) * rr, cc.y + std::sin(a) * rr), px(1.6f), anim::Col(anim::WithAlpha(col, 0.35f)), 6);
-    }
-    const char* phaseName = g.phase == Prep ? "PREPARAR" : g.phase == Round ? "ROUND" : g.phase == Rest ? "DESCANSO" : g.phase == Done ? "FIM DO TREINO" : "PRONTO";
-    std::string big = g.phase == Done ? "0:00" : Clock(rem);
-    ImFont* hf = theme::fonts.huge;
-    float bigSize = std::min(R * 0.62f, hf->FontSize * 2.6f);
-    ImVec2 bs = hf->CalcTextSizeA(bigSize, FLT_MAX, 0, big.c_str());
-    dl->AddText(hf, bigSize, ImVec2(cc.x - bs.x * 0.5f, cc.y - bs.y * 0.5f), anim::Col(theme::Text), big.c_str());
-    ImGui::PushFont(theme::fonts.semibold);
-    ImVec2 ps = ImGui::CalcTextSize(phaseName);
-    dl->AddText(ImVec2(cc.x - ps.x * 0.5f, cc.y - bs.y * 0.5f - ps.y - px(2)), anim::Col(col), phaseName);
     ImGui::PopFont();
-    char rl[48];
-    snprintf(rl, sizeof(rl), "Round %d de %d", std::max(1, g.round), c.timerRounds);
-    ImGui::PushFont(theme::fonts.caption);
-    ImVec2 rs = ImGui::CalcTextSize(rl);
-    dl->AddText(ImVec2(cc.x - rs.x * 0.5f, cc.y + bs.y * 0.5f + px(2)), anim::Col(theme::TextDim), rl);
+    if (g.pausedAt >= 0 && live) {
+        ImGui::PushFont(theme::fonts.label);
+        const char* pz = "PAUSADO";
+        ImVec2 ts = ImGui::CalcTextSize(pz);
+        float al = 0.6f + 0.4f * std::sin(anim::Time() * 4.f);
+        dl->AddText(ImVec2(a.x + (avail - ts.x) * 0.5f, a.y + bandH + px(12)), anim::Col(anim::WithAlpha(theme::Text, al)), pz);
+        ImGui::PopFont();
+    }
+    // relógio
+    std::string big = Clock(rem);
+    ImFont* cf = theme::fonts.clock;
+    float maxH = cardH - bandH - px(96);
+    float fs = std::min(cf->FontSize, maxH);
+    ImVec2 bs = cf->CalcTextSizeA(fs, FLT_MAX, 0, big.c_str());
+    if (bs.x > avail - px(40)) { fs *= (avail - px(40)) / bs.x; bs = cf->CalcTextSizeA(fs, FLT_MAX, 0, big.c_str()); }
+    float midY = a.y + bandH + (cardH - bandH - px(52)) * 0.5f;
+    ImVec2 tp(a.x + (avail - bs.x) * 0.5f, midY - bs.y * 0.5f);
+    ImVec4 clockCol = warn ? anim::Lerp(theme::Text, theme::Amber, flash) : theme::Text;
+    if (g.pausedAt >= 0 && live) clockCol = anim::WithAlpha(theme::Text, 0.55f);
+    dl->AddText(cf, fs, tp, anim::Col(clockCol), big.c_str());
+    dl->AddText(cf, fs, ImVec2(tp.x + px(1), tp.y), anim::Col(clockCol), big.c_str()); // um pouco mais grosso
+    // próximo
+    ImGui::PushFont(live ? theme::fonts.semibold : theme::fonts.caption);
+    {
+        std::string nx = NextLabel(c);
+        ImVec2 ts = ImGui::CalcTextSize(nx.c_str());
+        dl->AddText(ImVec2(a.x + (avail - ts.x) * 0.5f, tp.y + bs.y + px(2)), anim::Col(theme::TextDim), nx.c_str());
+    }
     ImGui::PopFont();
-
-    // ---- controles
-    float bw = px(120);
-    float total = bw * 3 + px(20);
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.f, (avail - total) * 0.5f));
-    bool running = Running();
-    if (w::PrimaryButton(g.phase == Stopped || g.phase == Done ? "Iniciar" : running ? "Pausar" : "Continuar", ImVec2(bw, px(42)),
-                         running ? Icon::Stop : Icon::Play)) {
-        if (g.phase == Stopped || g.phase == Done) Start(app);
-        else if (running) g.pausedAt = Now();
-        else { g.phaseStart += Now() - g.pausedAt; g.pausedAt = -1; }
-    }
-    ImGui::SameLine(0, px(10));
-    if (w::GhostButton("Reiniciar", ImVec2(bw, px(42)), Icon::Refresh)) { g = State(); }
-    ImGui::SameLine(0, px(10));
-    if (w::GhostButton("Pular", ImVec2(bw, px(42)), Icon::Send) && g.phase != Stopped && g.phase != Done) {
-        if (g.pausedAt >= 0) g.pausedAt = -1;
-        Advance(app);
-    }
-
-    // ---- predefinições
-    w::SectionTitle("Treinos prontos", Icon::Sparkle);
-    float lineW = 0;
-    for (size_t i = 0; i < std::size(kPresets); ++i) {
-        float wdt = ImGui::CalcTextSize(kPresets[i].name).x + px(38);
-        if (i && lineW + wdt < avail) ImGui::SameLine(0, px(8));
-        else lineW = 0;
-        lineW += wdt + px(8);
-        bool active = c.timerRounds == kPresets[i].rounds && c.timerRoundSec == kPresets[i].roundSec && c.timerRestSec == kPresets[i].restSec;
-        ImGui::PushID((int)i);
-        if (active) ImGui::PushStyleColor(ImGuiCol_Text, theme::Cyan);
-        if (w::Chip(kPresets[i].name)) {
-            c.timerRounds = kPresets[i].rounds;
-            c.timerRoundSec = kPresets[i].roundSec;
-            c.timerRestSec = kPresets[i].restSec;
-            ch = true;
+    // marcadores dos rounds
+    {
+        int n = std::max(1, c.timerRounds);
+        float pad = px(16), gap = px(5);
+        float mw = std::min(px(46), (avail - pad * 2 - gap * (n - 1)) / n);
+        float total = mw * n + gap * (n - 1);
+        float x = a.x + (avail - total) * 0.5f, y = b.y - px(40);
+        for (int i = 1; i <= n; ++i) {
+            bool done = g.phase == Done || (live && (i < g.round || (i == g.round && g.phase == Rest)));
+            bool cur = live && i == g.round && g.phase == Round;
+            ImVec4 mc = done ? ImVec4(1, 1, 1, 0.75f) : cur ? colS : ImVec4(1, 1, 1, 0.10f);
+            ImVec2 m0(x, y), m1(x + mw, y + px(6));
+            dl->AddRectFilled(m0, m1, anim::Col(mc), px(3));
+            if (cur && g.phaseLen > 0) {
+                // round atual enche conforme o tempo passa
+                float f = 1.f - (float)(rem / g.phaseLen);
+                dl->AddRectFilled(m0, m1, anim::Col(ImVec4(1, 1, 1, 0.12f)), px(3));
+                dl->AddRectFilled(m0, ImVec2(m0.x + mw * f, m1.y), anim::Col(colS), px(3));
+            }
+            x += mw + gap;
         }
-        if (active) ImGui::PopStyleColor();
-        ImGui::PopID();
+    }
+    // barra da fase atual
+    {
+        float frac = g.phase == Stopped || g.phaseLen <= 0 ? (g.phase == Done ? 1.f : 0.f) : 1.f - (float)(rem / g.phaseLen);
+        float sh = anim::To(ImGui::GetID("##tbar"), frac, 12.f);
+        ImVec2 p0(a.x + px(16), b.y - px(20)), p1(b.x - px(16), b.y - px(16));
+        dl->AddRectFilled(p0, p1, anim::Col(ImVec4(1, 1, 1, 0.08f)), px(2));
+        if (sh > 0.002f) dl->AddRectFilled(p0, ImVec2(p0.x + (p1.x - p0.x) * sh, p1.y), anim::Col(colS), px(2));
     }
 
-    // ---- treinos criados pela pessoa (por voz: "KB, criar treino")
-    w::SectionTitle("Meus treinos", Icon::Sparkle);
-    if (c.workouts.empty()) w::Hint("Diga \"KB, criar treino\" ou clique abaixo: eu pergunto o nome, quantos rounds e quanto tempo.");
-    int removeIdx = -1;
-    for (size_t i = 0; i < c.workouts.size(); ++i) {
-        auto parts = text::Split(c.workouts[i], '|');
-        if (parts.size() < 4) continue;
-        int r = atoi(parts[1].c_str()), rs = atoi(parts[2].c_str()), rest = atoi(parts[3].c_str());
-        ImGui::PushID(1000 + (int)i);
+    // ---------------------------------------------------------- controles
+    ImGui::Dummy(ImVec2(0, px(4)));
+    {
+        float big2 = px(72), small = px(52), gap = px(28);
+        float total = big2 + small * 2 + gap * 2;
         ImVec2 p = ImGui::GetCursorScreenPos();
-        float rowW = ImGui::GetContentRegionAvail().x, rowH = ImGui::GetFrameHeight() + px(14);
-        bool active = c.timerRounds == r && c.timerRoundSec == rs && c.timerRestSec == rest;
-        bool clicked = ImGui::InvisibleButton("##w", ImVec2(rowW - px(80), rowH));
-        bool hov = ImGui::IsItemHovered();
-        ImDrawList* dl2 = ImGui::GetWindowDrawList();
-        dl2->AddRectFilled(p, ImVec2(p.x + rowW, p.y + rowH), anim::Col(hov ? theme::PanelHi : ImVec4(0.118f, 0.133f, 0.161f, 1.f)), px(6));
-        dl2->AddRectFilled(p, ImVec2(p.x + px(3), p.y + rowH), anim::Col(active ? theme::Red : theme::Cyan), px(6), ImDrawFlags_RoundCornersLeft);
-        ImGui::PushFont(theme::fonts.semibold);
-        dl2->AddText(ImVec2(p.x + px(14), p.y + px(4)), anim::Col(theme::Text), parts[0].c_str());
-        ImGui::PopFont();
-        char det[96];
-        snprintf(det, sizeof(det), "%d rounds × %s  ·  descanso %s", r, Clock(rs).c_str(), rest ? Clock(rest).c_str() : "nenhum");
-        ImGui::PushFont(theme::fonts.caption);
-        dl2->AddText(ImVec2(p.x + px(14), p.y + rowH * 0.5f + px(1)), anim::Col(theme::TextDim), det);
-        ImGui::PopFont();
-        if (clicked) { c.timerRounds = r; c.timerRoundSec = rs; c.timerRestSec = rest; ch = true; }
-        ImGui::SameLine(0, 0);
-        ImGui::SetCursorScreenPos(ImVec2(p.x + rowW - px(76), p.y + (rowH - px(32)) * 0.5f));
-        if (w::IconButton("play", Icon::Play, px(32), "Começar este treino")) {
-            c.timerRounds = r; c.timerRoundSec = rs; c.timerRestSec = rest;
-            app.ApplyConfig(c);
-            Start(app);
+        float x = p.x + (avail - total) * 0.5f;
+        ImGui::SetCursorScreenPos(ImVec2(x, p.y + (big2 - small) * 0.5f));
+        if (RoundButton("##reset", 2, small, theme::Cyan, false, "Reiniciar")) g = State();
+        ImGui::SetCursorScreenPos(ImVec2(x + small + gap, p.y));
+        bool startNew = g.phase == Stopped || g.phase == Done;
+        if (RoundButton("##play", running ? 1 : 0, big2, startNew ? theme::Red : colS, true, startNew ? "Começar" : running ? "Pausar" : "Continuar")) {
+            if (startNew) Start(app);
+            else if (running) g.pausedAt = Now();
+            else { g.phaseStart += Now() - g.pausedAt; g.pausedAt = -1; }
         }
-        ImGui::SameLine(0, px(6));
-        if (w::IconButton("del", Icon::Trash, px(32), "Apagar")) removeIdx = (int)i;
-        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + rowH + px(6)));
+        ImGui::SetCursorScreenPos(ImVec2(x + small + gap + big2 + gap, p.y + (big2 - small) * 0.5f));
+        if (RoundButton("##skip", 3, small, theme::Cyan, false, "Pular para a próxima fase") && live) {
+            if (g.pausedAt >= 0) g.pausedAt = -1;
+            Advance(app);
+        }
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + big2 + px(8)));
         ImGui::Dummy(ImVec2(0, 0));
-        ImGui::PopID();
     }
-    if (removeIdx >= 0) { c.workouts.erase(c.workouts.begin() + removeIdx); ch = true; }
-    if (w::GhostButton("Novo treino", ImVec2(0, 0), Icon::Mic)) app.SendText("criar treino");
-    ImGui::SameLine();
-    w::Hint("Também por voz: \"KB, começar treino <nome>\".");
+    if (live) { ImGui::End(); return; }
 
-    // ---- ajustes
-    w::SectionTitle("Ajustes", Icon::Gear);
-    char fmt[64];
-    ImGui::SetNextItemWidth(-1);
-    snprintf(fmt, sizeof(fmt), "Rounds: %d", c.timerRounds);
-    ch |= ImGui::SliderInt("##rounds", &c.timerRounds, 1, 15, fmt);
-    auto timeSlider = [&](const char* id, const char* label, int* v, int mn, int mx, int step) {
-        int steps = *v / step;
-        snprintf(fmt, sizeof(fmt), "%s: %d:%02d", label, *v / 60, *v % 60);
-        ImGui::SetNextItemWidth(-1);
-        if (ImGui::SliderInt(id, &steps, mn / step, mx / step, fmt)) { *v = steps * step; ch = true; }
+    // ---------------------------------------------------------- treino
+    SubTitle("Treino");
+    {
+        float gap = px(10);
+        float cw = (avail - gap) * 0.5f;
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ch |= Stepper("r", "ROUNDS", &c.timerRounds, 1, 30, 1, false, cw);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + cw + gap, p.y));
+        ch |= Stepper("d", "DURAÇÃO DO ROUND", &c.timerRoundSec, 15, 1800, 15, true, cw);
+        p.y += px(78) + gap;
+        ImGui::SetCursorScreenPos(p);
+        ch |= Stepper("rest", "DESCANSO", &c.timerRestSec, 0, 600, 15, true, cw);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + cw + gap, p.y));
+        ch |= Stepper("prep", "PREPARAÇÃO", &c.timerPrepSec, 0, 60, 5, true, cw);
+        p.y += px(78) + gap;
+        ImGui::SetCursorScreenPos(p);
+        ch |= Stepper("warn", "AVISO ANTES DO FIM", &c.timerWarnSec, 0, 30, 5, true, cw);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + cw + gap, p.y));
+        if (Stepper("vol", "VOLUME DOS SINAIS", &c.timerVolume, 0, 100, 10, false, cw, "%")) { ch = true; g_volume = c.timerVolume; Play(c.timerStartSound); }
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + px(78)));
+        ImGui::Dummy(ImVec2(0, 0));
+    }
+
+    // ---------------------------------------------------------- treinos prontos (cartões em 2 colunas)
+    auto workoutCard = [&](const char* id, const std::string& name, int r, int rs, int rest, float cw, bool* del) -> bool {
+        ImGui::PushID(id);
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        float h = px(56);
+        bool active = c.timerRounds == r && c.timerRoundSec == rs && c.timerRestSec == rest;
+        bool click = ImGui::InvisibleButton("##c", ImVec2(cw - (del ? px(40) : 0), h));
+        float hv = anim::To(ImGui::GetItemID(), ImGui::IsItemHovered() ? 1.f : 0.f, 14.f);
+        dl->AddRectFilled(p, ImVec2(p.x + cw, p.y + h), anim::Col(anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), theme::PanelHi, hv)), px(8));
+        if (active) dl->AddRect(p, ImVec2(p.x + cw, p.y + h), anim::Col(theme::Red), px(8), 0, px(1.5f));
+        float tw = cw - px(24) - (del ? px(40) : 0);
+        std::string nm = name;
+        ImGui::PushFont(theme::fonts.semibold);
+        while (nm.size() > 3 && ImGui::CalcTextSize(nm.c_str()).x > tw) {
+            nm.pop_back();
+            while (!nm.empty() && ((unsigned char)nm.back() & 0xC0) == 0x80) nm.pop_back();
+        }
+        if (nm != name) nm += "…";
+        dl->AddText(ImVec2(p.x + px(12), p.y + px(8)), anim::Col(theme::Text), nm.c_str());
+        ImGui::PopFont();
+        char det[64];
+        snprintf(det, sizeof(det), "%d × %s  ·  descanso %s", r, Clock(rs).c_str(), rest ? Clock(rest).c_str() : "--");
+        ImGui::PushFont(theme::fonts.caption);
+        dl->AddText(ImVec2(p.x + px(12), p.y + px(31)), anim::Col(active ? theme::Red : theme::TextDim), det);
+        ImGui::PopFont();
+        if (del) {
+            ImGui::SetCursorScreenPos(ImVec2(p.x + cw - px(38), p.y + (h - px(30)) * 0.5f));
+            *del = w::IconButton("del", Icon::Trash, px(30), "Apagar");
+        }
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + h));
+        ImGui::Dummy(ImVec2(cw, 0));
+        ImGui::PopID();
+        if (click) { c.timerRounds = r; c.timerRoundSec = rs; c.timerRestSec = rest; ch = true; }
+        return click;
     };
-    timeSlider("##round", "Duração do round", &c.timerRoundSec, 15, 600, 15);
-    timeSlider("##rest", "Descanso", &c.timerRestSec, 0, 300, 5);
-    timeSlider("##prep", "Preparação", &c.timerPrepSec, 0, 60, 5);
-    ImGui::SetNextItemWidth(-1);
-    snprintf(fmt, sizeof(fmt), c.timerWarnSec ? "Aviso antes do fim: %d s" : "Aviso antes do fim: desligado", c.timerWarnSec);
-    ch |= ImGui::SliderInt("##warn", &c.timerWarnSec, 0, 30, fmt);
+    SubTitle("Treinos prontos");
+    {
+        float gap = px(10), cw = (avail - gap) * 0.5f;
+        ImVec2 p0 = ImGui::GetCursorScreenPos();
+        int n = (int)std::size(kPresets);
+        for (int i = 0; i < n; ++i) {
+            ImGui::SetCursorScreenPos(ImVec2(p0.x + (i % 2) * (cw + gap), p0.y + (i / 2) * (px(56) + gap)));
+            std::string nm = kPresets[i].name;
+            nm = nm.substr(0, nm.find(" · "));
+            workoutCard(kPresets[i].name, nm, kPresets[i].rounds, kPresets[i].roundSec, kPresets[i].restSec, cw, nullptr);
+        }
+        ImGui::SetCursorScreenPos(ImVec2(p0.x, p0.y + ((n + 1) / 2) * (px(56) + gap) - gap));
+        ImGui::Dummy(ImVec2(0, 0));
+    }
 
-    w::SectionTitle("Sinais", Icon::Wave);
+    // ---------------------------------------------------------- meus treinos
+    SubTitle("Meus treinos");
+    {
+        int removeIdx = -1;
+        float gap = px(10), cw = (avail - gap) * 0.5f;
+        ImVec2 p0 = ImGui::GetCursorScreenPos();
+        int k = 0;
+        for (size_t i = 0; i < c.workouts.size(); ++i) {
+            auto parts = text::Split(c.workouts[i], '|');
+            if (parts.size() < 4) continue;
+            ImGui::SetCursorScreenPos(ImVec2(p0.x + (k % 2) * (cw + gap), p0.y + (k / 2) * (px(56) + gap)));
+            bool del = false;
+            workoutCard(std::to_string(1000 + i).c_str(), parts[0], atoi(parts[1].c_str()), atoi(parts[2].c_str()), atoi(parts[3].c_str()), cw, &del);
+            if (del) removeIdx = (int)i;
+            ++k;
+        }
+        if (k) {
+            ImGui::SetCursorScreenPos(ImVec2(p0.x, p0.y + ((k + 1) / 2) * (px(56) + gap)));
+            ImGui::Dummy(ImVec2(0, 0));
+        } else {
+            w::Hint("Nenhum treino salvo ainda. Diga \"KB, criar treino\" e eu pergunto o nome, os rounds e o tempo.");
+        }
+        if (removeIdx >= 0) { c.workouts.erase(c.workouts.begin() + removeIdx); ch = true; }
+        if (w::GhostButton("Criar treino por voz", ImVec2(0, 0), Icon::Mic)) app.SendText("criar treino");
+    }
+
+    // ---------------------------------------------------------- sinais
+    SubTitle("Sinais");
     auto soundCombo = [&](const char* label, const char* id, int* v) {
         ImGui::PushID(id);
+        float lw = px(150);
         ImGui::AlignTextToFramePadding();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::TextDim);
         ImGui::TextUnformatted(label);
-        float tb = px(36);
+        ImGui::PopStyleColor();
+        ImGui::SameLine(lw);
+        float tb = ImGui::GetFrameHeight();
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - tb - px(8));
         if (ImGui::BeginCombo("##c", kSoundNames[std::clamp(*v, 0, kSoundCount - 1)])) {
             for (int s = 0; s < kSoundCount; ++s)
@@ -452,13 +657,9 @@ void Window(App& app, bool* open) {
     };
     soundCombo("Início do round", "s1", &c.timerStartSound);
     soundCombo("Fim do round", "s2", &c.timerEndSound);
-    soundCombo("Aviso (últimos segundos)", "s3", &c.timerWarnSound);
-    ImGui::SetNextItemWidth(-1);
-    snprintf(fmt, sizeof(fmt), c.timerVolume ? "Volume dos sinais: %d%%%%" : "Sinais sem som", c.timerVolume);
-    if (ImGui::SliderInt("##vol", &c.timerVolume, 0, 100, fmt)) ch = true;
-    if (ImGui::IsItemDeactivatedAfterEdit()) { g_volume = c.timerVolume; Play(c.timerStartSound); }
-    ch |= w::Toggle("Anunciar por voz (round, descanso, últimos segundos)", &c.timerVoice);
-    w::Hint("Dica: peça por voz \"KB, abre o timer\" ou use o ícone de cronômetro na barra lateral.");
+    soundCombo("Últimos segundos", "s3", &c.timerWarnSound);
+    ImGui::Dummy(ImVec2(0, px(2)));
+    ch |= w::Toggle("Anunciar por voz", &c.timerVoice, "Fala \"round 2\", \"descanso\" e \"10 segundos\".");
 
     if (ch) app.ApplyConfig(c);
     ImGui::End();

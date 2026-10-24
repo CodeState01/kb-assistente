@@ -5,6 +5,7 @@
 #include <mmsystem.h>
 #include <bcrypt.h>
 #include "core/files.h"
+#include "core/install.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
@@ -149,7 +150,10 @@ void App::Init(bool startedMinimized) {
     (void)startedMinimized;
     config::Load(cfg_);
     cfg_.startWithWindows = platform::IsAutostartEnabled();
-    if (cfg_.startWithWindows) platform::SetAutostart(true, cfg_.startMinimized); // atualiza o caminho do .exe
+    // atualiza o caminho do .exe (só a cópia instalada; testes e cópias soltas não mexem na inicialização)
+    if (cfg_.startWithWindows && GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) == 0 &&
+        _wcsicmp(text::Widen(platform::ExePath()).c_str(), install::InstalledExe().c_str()) == 0)
+        platform::SetAutostart(true, cfg_.startMinimized);
 
     tts_ = std::make_unique<TextToSpeech>();
     tts_->SetVoice(cfg_.ttsVoice);

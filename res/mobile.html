@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0b0f1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KB">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="icon" href="/icon.svg">
+<title>KB</title>
+<style>
+:root{--bg:#0b0f1a;--bg2:#160f2e;--tx:#eef2ff;--dim:#a3acc9;--faint:#6b7599;--cyan:#4cd1fa;--violet:#8f66ff;--pink:#f754ad;--green:#33e6a3;--amber:#ffb84d;--a:var(--cyan);--b:var(--violet)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--tx);font:16px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+body:before{content:"";position:fixed;inset:-30%;background:radial-gradient(40% 30% at 20% 20%,#8f66ff22,transparent),radial-gradient(35% 30% at 80% 30%,#4cd1fa18,transparent),radial-gradient(40% 35% at 50% 100%,#f754ad14,transparent);animation:drift 18s ease-in-out infinite alternate;pointer-events:none}
+@keyframes drift{to{transform:translate(4%,3%) rotate(6deg)}}
+#app{position:relative;display:flex;flex-direction:column;height:100%;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px}
+header .logo{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff8,transparent 40%),radial-gradient(circle,var(--a),var(--b))}
+header b{font-size:18px}
+#conn{margin-left:auto;font-size:13px;color:var(--dim);display:flex;align-items:center;gap:6px}
+#conn i{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--amber)}
+#conn.on i{background:var(--green);box-shadow:0 0 10px var(--green)}
+#stage{display:flex;flex-direction:column;align-items:center;transition:height .6s cubic-bezier(.2,.9,.2,1);height:42vh;justify-content:center;flex:none}
+#stage.small{height:150px}
+.orb{position:relative;width:min(44vw,190px);aspect-ratio:1;transition:width .6s cubic-bezier(.2,.9,.2,1)}
+#stage.small .orb{width:84px}
+.orb .glow{position:absolute;inset:-45%;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--a) 45%,transparent),transparent 62%);animation:pulse 3.2s ease-in-out infinite}
+.orb .core{position:absolute;inset:0;border-radius:47% 53% 52% 48%/50% 46% 54% 50%;background:radial-gradient(circle at 34% 30%,#ffffffaa,transparent 32%),radial-gradient(circle at 62% 66%,color-mix(in srgb,var(--pink) 70%,transparent),transparent 45%),radial-gradient(circle,var(--a),var(--b));box-shadow:inset 0 0 30px #fff3,0 0 40px color-mix(in srgb,var(--a) 50%,transparent);animation:morph 7s ease-in-out infinite,spin 16s linear infinite}
+.orb .ring{position:absolute;inset:-14%;border-radius:50%;border:2px solid var(--a);opacity:0}
+@keyframes pulse{50%{transform:scale(1.08);opacity:.8}}
+@keyframes morph{25%{border-radius:55% 45% 48% 52%/45% 55% 45% 55%}50%{border-radius:45% 55% 56% 44%/56% 44% 52% 48%}75%{border-radius:52% 48% 44% 56%/48% 52% 58% 42%}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes ripple{from{transform:scale(.85);opacity:.7}to{transform:scale(1.6);opacity:0}}
+@keyframes wob{50%{transform:scale(1.07)}}
+body.listening{--a:var(--green);--b:var(--cyan)}
+body.listening .ring{animation:ripple 1.4s ease-out infinite}
+body.listening .ring+.ring{animation-delay:.7s}
+body.thinking,body.transcribing{--a:var(--violet);--b:var(--pink)}
+body.thinking .core,body.transcribing .core{animation:morph 2s ease-in-out infinite,spin 3s linear infinite}
+body.thinking .ring{opacity:.6;border-style:dashed;animation:spin 2.4s linear infinite}
+body.speaking{--a:#66c7ff;--b:var(--violet)}
+body.speaking .core{animation:wob .45s ease-in-out infinite,spin 16s linear infinite}
+#status{margin-top:18px;font-size:20px;font-weight:600;text-align:center;transition:opacity .3s}
+#stage.small #status{font-size:15px;margin-top:10px}
+#sub{color:var(--faint);font-size:13px;margin-top:4px;text-align:center;padding:0 20px}
+#msgs{flex:1;overflow-y:auto;padding:4px 14px 10px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+.m{max-width:86%;padding:10px 14px;border-radius:18px;margin:8px 0;animation:in .35s cubic-bezier(.2,.9,.3,1.2) both;white-space:pre-wrap;word-wrap:break-word}
+@keyframes in{from{opacity:0;transform:translateY(14px) scale(.98)}}
+.u{margin-left:auto;background:linear-gradient(135deg,#385fe0cc,#7a4dedcc);border-bottom-right-radius:6px}
+.k{background:#ffffff0d;border:1px solid #ffffff14;border-top-left-radius:6px}
+.k.err{background:#ff5a6a1a;border-color:#ff5a6a55}
+.card{margin:8px 0;padding:10px 12px;border-radius:14px;background:#ffffff08;border:1px solid color-mix(in srgb,var(--c,var(--cyan)) 40%,transparent);white-space:pre-wrap}
+.card h4{margin:0 0 6px;font-size:14px;color:var(--c,var(--cyan))}
+.card pre{margin:0;font:13px/1.4 ui-monospace,Consolas,monospace;overflow-x:auto;white-space:pre}
+.dots span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:var(--cyan);animation:b 1s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes b{50%{transform:translateY(-5px);opacity:.5}}
+#chips{display:flex;gap:8px;padding:0 14px 8px;overflow-x:auto}
+.chip{flex:none;padding:8px 14px;border-radius:999px;border:1px solid #ffffff1f;background:#ffffff0a;color:var(--dim);font-size:14px}
+#att{display:none;align-items:center;gap:8px;padding:0 16px 8px;color:var(--dim);font-size:13px}
+#att img{width:44px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #ffffff22}
+#att button{background:none;border:0;color:var(--dim);font-size:18px}
+form{display:flex;align-items:flex-end;gap:8px;margin:0 10px 10px;padding:6px;border-radius:26px;background:#141a2bee;border:1px solid #ffffff17;transition:border-color .3s,box-shadow .3s}
+form:focus-within{border-color:#4cd1fa88;box-shadow:0 0 0 4px #4cd1fa14}
+textarea{flex:1;resize:none;border:0;outline:0;background:none;color:var(--tx);font:16px/1.35 inherit;padding:9px 6px;max-height:120px}
+.btn{flex:none;width:42px;height:42px;border-radius:50%;border:0;display:grid;place-items:center;background:#ffffff10;color:var(--tx);transition:transform .15s}
+.btn:active{transform:scale(.9)}
+.btn svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#send{background:linear-gradient(135deg,#3a6df0,#8a55f5)}
+#mic.on{background:radial-gradient(circle,var(--green),#20b6d6);color:#032;box-shadow:0 0 0 6px #33e6a333}
+#tts{position:absolute;right:12px;top:calc(env(safe-area-inset-top) + 54px);font-size:12px;color:var(--faint);background:#ffffff0a;border:1px solid #ffffff14;border-radius:999px;padding:5px 10px}
+#tts.on{color:var(--cyan);border-color:#4cd1fa55}
+</style>
+</head>
+<body class="idle">
+<div id="app">
+  <header><div class="logo"></div><b>KB</b><span id="conn"><i></i><span>conectando…</span></span></header>
+  <button id="tts" type="button">🔈 ler respostas</button>
+  <div id="stage"><div class="orb"><div class="glow"></div><div class="ring"></div><div class="ring"></div><div class="core"></div></div>
+    <div id="status">Olá! Como posso ajudar?</div><div id="sub">Conectado ao KB do seu PC</div></div>
+  <div id="msgs"></div>
+  <div id="chips"></div>
+  <div id="att"><img id="attImg" alt=""><span>Imagem anexada</span><button id="attX" type="button">✕</button></div>
+  <form id="f">
+    <label class="btn" title="Foto"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      <input id="file" type="file" accept="image/*" hidden></label>
+    <textarea id="t" rows="1" placeholder="Fale ou digite…"></textarea>
+    <button class="btn" id="mic" type="button" title="Falar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <button class="btn" id="send" title="Enviar"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg></button>
+  </form>
+</div>
+<script>
+const T=new URLSearchParams(location.search).get('t')||'';
+const $=s=>document.querySelector(s);
+let ver=-1,img='',known={},tts=localStorage.kbtts==='1',spoken={},lastState='idle',fails=0;
+const labels={idle:'Olá! Como posso ajudar?',listening:'Ouvindo no PC…',transcribing:'Entendendo…',thinking:'Pensando…',speaking:'Respondendo'};
+$('#tts').classList.toggle('on',tts);
+$('#tts').onclick=()=>{tts=!tts;localStorage.kbtts=tts?'1':'0';$('#tts').classList.toggle('on',tts);if(!tts)speechSynthesis.cancel()};
+const sug=['Que horas são?','Resuma meu dia em 3 passos','Me conte uma curiosidade','O que você vê nesta foto?'];
+for(const s of sug){const b=document.createElement('button');b.className='chip';b.textContent=s;b.onclick=()=>send(s);$('#chips').append(b)}
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function render(text){
+  const cols={card:'var(--cyan)',passos:'var(--violet)',aviso:'var(--amber)',dica:'var(--green)',tabela:'var(--pink)'};
+  return esc(text).replace(/```([^\n]*)\n?([\s\S]*?)(```|$)/g,(m,lang,body)=>{
+    lang=lang.trim();const l=lang.toLowerCase();
+    if(l.startsWith('arquivo'))return `<div class="card" style="--c:var(--amber)"><h4>📄 Pedido para criar arquivo</h4>${lang.slice(7).trim()}<br><small>Aprove ou negue no PC.</small></div>`;
+    if(l==='card'){const ls=body.split('\n');return `<div class="card"><h4>${ls.shift()}</h4>${ls.join('\n')}</div>`}
+    if(cols[l])return `<div class="card" style="--c:${cols[l]}"><h4>${l[0].toUpperCase()+l.slice(1)}</h4>${body}</div>`;
+    return `<div class="card" style="--c:#6f8cff"><h4>${lang||'código'}</h4><pre>${body}</pre></div>`;
+  }).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function speakText(id,text){
+  if(!tts||spoken[id])return;spoken[id]=1;
+  const clean=text.replace(/```[\s\S]*?```/g,' Mostrei os detalhes na tela. ').replace(/[*#`|_>]/g,'');
+  const u=new SpeechSynthesisUtterance(clean);u.lang='pt-BR';
+  const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.toLowerCase().startsWith('pt'));if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+async function poll(){
+  try{
+    const r=await fetch(`/api/state?t=${T}&since=${ver}`,{cache:'no-store'});
+    if(!r.ok)throw 0;const d=await r.json();fails=0;
+    $('#conn').classList.add('on');$('#conn span').textContent=d.model||'conectado';
+    if(d.state!==lastState){document.body.className=d.state;lastState=d.state;$('#status').textContent=labels[d.state]||labels.idle}
+    if(d.messages){ver=d.v;const box=$('#msgs');
+      $('#stage').classList.toggle('small',d.messages.length>0);$('#chips').style.display=d.messages.length?'none':'flex';
+      for(const m of d.messages){let el=known[m.id];
+        if(!el){el=document.createElement('div');el.className='m '+(m.user?'u':'k');known[m.id]=el;box.append(el)}
+        el.classList.toggle('err',!!m.error);
+        el.innerHTML=(m.img?'🖼️ ':'')+(m.text?render(m.text):(m.streaming?'<span class="dots"><span></span><span></span><span></span></span>':''));
+        if(!m.user&&!m.streaming&&m.text)speakText(m.id,m.text);
+      }
+      box.scrollTop=box.scrollHeight}
+  }catch(e){if(++fails>2){$('#conn').classList.remove('on');$('#conn span').textContent='sem conexão com o PC'}}
+  setTimeout(poll,document.hidden?2500:600);
+}
+async function send(text){
+  text=(text||'').trim();if(!text&&!img)return;
+  $('#t').value='';$('#t').style.height='';
+  const body={text:text||'O que você vê nesta imagem?',image:img};img='';$('#att').style.display='none';
+  await fetch(`/api/send?t=${T}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+}
+$('#f').onsubmit=e=>{e.preventDefault();send($('#t').value)};
+$('#t').addEventListener('input',e=>{e.target.style.height='';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'});
+$('#t').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send($('#t').value)}});
+$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{
+  const k=Math.min(1,1280/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k|0;c.height=im.height*k|0;
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);const url=c.toDataURL('image/jpeg',.85);img=url.split(',')[1];
+  $('#attImg').src=url;$('#att').style.display='flex';URL.revokeObjectURL(im.src)};im.src=URL.createObjectURL(f);e.target.value=''};
+$('#attX').onclick=()=>{img='';$('#att').style.display='none'};
+// Microfone: reconhecimento do navegador (quando permitido); senão usa o microfone do PC.
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null;
+$('#mic').onclick=async()=>{
+  if(lastState==='speaking'||lastState==='thinking'){fetch(`/api/stop?t=${T}`,{method:'POST'});speechSynthesis.cancel();return}
+  if(SR&&window.isSecureContext){
+    if(rec){rec.stop();return}
+    rec=new SR();rec.lang='pt-BR';rec.interimResults=true;$('#mic').classList.add('on');
+    rec.onresult=e=>{let s='';for(const r of e.results)s+=r[0].transcript;$('#t').value=s;if(e.results[e.results.length-1].isFinal)send(s)};
+    rec.onend=()=>{rec=null;$('#mic').classList.remove('on')};rec.start();
+  }else{
+    // Em conexão local (http) o navegador bloqueia o microfone: ouvimos pelo PC.
+    await fetch(`/api/listen?t=${T}`,{method:'POST'});
+    $('#sub').textContent='Dica: o teclado do celular também tem um microfone para ditar.';
+  }
+};
+poll();
+</script>
+</body>
+</html>

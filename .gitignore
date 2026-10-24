@@ -1,0 +1,6 @@
+build/
+dist/
+bin/
+*.bmp
+*.png
+!res/*.png

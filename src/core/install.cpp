@@ -130,6 +130,8 @@ DeviceInfo DetectDevice() {
         d.arch = si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? "ARM64" : si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "x64" : "x86";
     }
     if (d.arch == "x86") d.supported = false;
+    // Windows 10 em ARM só emula programas de 32 bits; o Windows 11 em ARM roda x64.
+    if (d.arch == "ARM64" && v.dwBuildNumber < 22000) d.supported = false;
 
     // Tipo de aparelho: perfil de energia + bateria + tela sensível ao toque
     SYSTEM_POWER_STATUS ps{};

@@ -289,7 +289,7 @@ void Frame() {
             w::Hint("Será instalada a versão para PC (Windows %s)%s.", g_dev.arch == "ARM64" ? "x64, via emulação do Windows 11" : "x64",
                     g_dev.kind == "Tablet / 2 em 1" ? " com interface de toque" : "");
         else
-            w::Hint("Este Windows não é compatível (é preciso Windows 10/11 de 64 bits).");
+            w::Hint(g_dev.arch == "ARM64" ? "No ARM, o KB precisa do Windows 11 (o Windows 10 ARM não roda programas x64)." : "Este Windows não é compatível (é preciso Windows 10/11 de 64 bits).");
         ImGui::EndGroup();
         w::EndCard();
         w::Hint("No celular (Android ou iPhone): depois de instalar, abra o KB > Configurações > Celular e escaneie o QR code.");

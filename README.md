@@ -4,6 +4,8 @@ Assistente de IA que abre com o Windows, **entende sua voz em português** e **r
 100% no seu PC. Interface em Dear ImGui com animações fluidas, painéis acopláveis (docking) e janelas
 flutuantes nativas.
 
+**⬇ Download (detecta o seu aparelho):** https://codestate01.github.io/kb-assistente/
+
 ## Recursos
 
 | Área | O que faz |

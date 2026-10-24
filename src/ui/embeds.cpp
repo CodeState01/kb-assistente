@@ -9,6 +9,7 @@
 #include "core/files.h"
 #include "imgui_internal.h"
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <unordered_map>
 
@@ -512,7 +513,9 @@ bool BeginPanel(const char* name, bool* open, ImGuiWindowFlags flags, ImVec4 acc
     bool vis = ImGui::Begin(name, open, flags);
     ImGuiViewport* vp = ImGui::GetWindowViewport();
     bool own = vp != ImGui::GetMainViewport();
-    transparent[id] = ImGui::IsWindowDocked() || own;
+    // só a conversa deixa a foto de fundo aparecer; os outros painéis são sólidos (legibilidade)
+    bool isChat = strstr(name, "###chat") != nullptr;
+    transparent[id] = own || (ImGui::IsWindowDocked() && isChat);
     if (own && vis) DrawBackdrop(ImGui::GetBackgroundDrawList(vp), vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y), accent, false);
     return vis;
 }
@@ -522,51 +525,30 @@ static float g_photoOpacity = 0.45f;
 void SetBackdropPhoto(bool on, float opacity) { g_photoOn = on; g_photoOpacity = opacity; }
 
 void DrawBackdrop(ImDrawList* dl, ImVec2 a, ImVec2 b, ImVec4 accent, bool particles) {
+    (void)accent;
     float t = anim::Time() * (anim::ReduceMotion() ? 0.2f : 1.f);
     ImU32 top = anim::Col(theme::Bg), bot = anim::Col(theme::Bg2);
     dl->AddRectFilledMultiColor(a, b, top, top, bot, bot);
     int iw = 0, ih = 0;
     ImTextureID photo = assets::Background(&iw, &ih);
     if (particles && g_photoOn && photo && iw > 0 && ih > 0) {
-        // foto ocupa a altura toda, um pouco à direita do centro, com bordas que se dissolvem no fundo
-        float H = b.y - a.y, W = H * iw / (float)ih;
-        float breathe = 1.f + 0.012f * std::sin(t * 0.25f);
+        // foto atrás da conversa, com bordas que se dissolvem no grafite
+        float H = (b.y - a.y) * 1.02f, W = H * iw / (float)ih;
+        float breathe = 1.f + 0.008f * std::sin(t * 0.25f);
         H *= breathe; W *= breathe;
-        float cx = a.x + (b.x - a.x) * 0.58f, top0 = a.y + ((b.y - a.y) - H) * 0.5f;
+        float cx = a.x + (b.x - a.x) * 0.56f, top0 = a.y + ((b.y - a.y) - H) * 0.5f;
         ImVec2 p0(cx - W * 0.5f, top0), p1(cx + W * 0.5f, top0 + H);
-        float op = std::clamp(g_photoOpacity, 0.f, 1.f);
+        float op = 0.15f + 0.55f * std::clamp(g_photoOpacity, 0.f, 1.f);
         dl->AddImage(photo, p0, p1, ImVec2(0, 0), ImVec2(1, 1), ImGui::GetColorU32(ImVec4(1, 1, 1, op)));
         ImU32 solid = anim::Col(theme::Bg), clear = anim::Col(theme::Bg, 0.f);
-        float fw = W * 0.28f;
+        float fw = W * 0.30f;
         dl->AddRectFilledMultiColor(p0, ImVec2(p0.x + fw, p1.y), solid, clear, clear, solid);
         dl->AddRectFilledMultiColor(ImVec2(p1.x - fw, p0.y), p1, clear, solid, solid, clear);
         dl->AddRectFilled(a, ImVec2(p0.x + 1, b.y), solid);
         dl->AddRectFilled(ImVec2(p1.x - 1, a.y), b, solid);
-        // vinheta para manter o texto legível
-        dl->AddRectFilledMultiColor(ImVec2(a.x, b.y - (b.y - a.y) * 0.35f), b, clear, clear, anim::Col(theme::Bg2, 0.85f), anim::Col(theme::Bg2, 0.85f));
-    }
-    float wdt = b.x - a.x, hgt = b.y - a.y, m = std::max(wdt, hgt);
-    struct Blob { float x, y, r, sx, sy; ImVec4 c; float alpha; };
-    Blob blobs[] = {
-        {0.15f, 0.20f, 0.65f, 0.11f, 0.07f, theme::Violet, 0.13f},
-        {0.85f, 0.30f, 0.55f, 0.08f, 0.13f, theme::Cyan, 0.08f},
-        {0.55f, 0.95f, 0.70f, 0.06f, 0.09f, theme::Pink, 0.06f},
-        {0.50f, 0.35f, 0.45f, 0.05f, 0.05f, accent, 0.07f},
-    };
-    for (auto& bl : blobs) {
-        ImVec2 c(a.x + wdt * (bl.x + 0.08f * std::sin(t * bl.sx * 2.f + bl.r * 10)),
-                 a.y + hgt * (bl.y + 0.08f * std::cos(t * bl.sy * 2.f + bl.x * 10)));
-        orbfx::RadialGradient(dl, c, 0, m * bl.r, anim::Col(anim::WithAlpha(bl.c, bl.alpha)), anim::Col(anim::WithAlpha(bl.c, 0)), 48);
-    }
-    if (!particles) return;
-    for (int i = 0; i < 60; ++i) {
-        float h1 = std::fabs(anim::Noise(i * 7.31f + 0.5f)), h2 = std::fabs(anim::Noise(i * 3.17f + 9.2f)), h3 = std::fabs(anim::Noise(i * 1.93f + 4.4f));
-        float sp = 0.004f + 0.012f * h3;
-        float x = std::fmod(h1 * 7.f + std::sin(t * 0.2f + i) * 0.01f, 1.f);
-        float y = std::fmod(h2 * 5.f + 1.f - std::fmod(t * sp, 1.f), 1.f);
-        float tw = 0.5f + 0.5f * std::sin(t * (1.f + h1 * 2.f) + i);
-        float r = px(0.8f + 1.4f * h3);
-        dl->AddCircleFilled(ImVec2(a.x + x * wdt, a.y + y * hgt), r, anim::Col(ImVec4(0.75f, 0.85f, 1.f, (0.08f + 0.25f * tw) * (0.4f + h3))), 8);
+        // camada escura + vinheta inferior: o texto sempre legível
+        dl->AddRectFilled(a, b, anim::Col(theme::Bg, 0.30f));
+        dl->AddRectFilledMultiColor(ImVec2(a.x, b.y - (b.y - a.y) * 0.45f), b, clear, clear, anim::Col(theme::Bg, 0.92f), anim::Col(theme::Bg, 0.92f));
     }
 }
 

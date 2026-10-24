@@ -1,4 +1,7 @@
 #include "ui/widgets.h"
+#include <windows.h>
+#include <string>
+#include <cstring>
 #include "ui/anim.h"
 #include "ui/theme.h"
 #include "imgui_internal.h"
@@ -215,6 +218,7 @@ void Tooltip(const char* text) {
     }
 }
 
+// Botão de ícone: quadrado de cantos suaves; ativo = fundo azul translúcido + ícone azul. Sem halos.
 bool IconButton(const char* id, Icon icon, float size, const char* tooltip, bool active, ImVec4 accent, bool round) {
     ImGui::PushID(id);
     ImVec2 p = ImGui::GetCursorScreenPos();
@@ -222,27 +226,21 @@ bool IconButton(const char* id, Icon icon, float size, const char* tooltip, bool
     bool hovered = ImGui::IsItemHovered();
     bool held = ImGui::IsItemActive();
     ImGuiID gid = ImGui::GetItemID();
-    float h = anim::To(gid, hovered ? 1.f : 0.f, 14.f);
-    float a = anim::To(gid + 1, active ? 1.f : 0.f, 10.f);
+    float h = anim::To(gid, hovered ? 1.f : 0.f, 16.f);
+    float a = anim::To(gid + 1, active ? 1.f : 0.f, 12.f);
     float press = anim::To(gid + 2, held ? 1.f : 0.f, 25.f);
     if (accent.w == 0) accent = theme::Cyan;
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 c(p.x + size * 0.5f, p.y + size * 0.5f);
-    float scale = 1.f - 0.08f * press;
-    float rr = size * 0.5f * scale;
-    ImVec4 bg = anim::Lerp(ImVec4(1, 1, 1, 0.0f), ImVec4(1, 1, 1, 0.08f), h);
-    bg = anim::Lerp(bg, anim::WithAlpha(accent, 0.18f), a);
+    float rr = size * 0.5f * (1.f - 0.05f * press);
+    ImVec4 bg = anim::Lerp(ImVec4(1, 1, 1, 0.0f), ImVec4(1, 1, 1, 0.07f), h);
+    bg = anim::Lerp(bg, anim::WithAlpha(accent, 0.16f + 0.06f * h), a);
     if (round) dl->AddCircleFilled(c, rr, anim::Col(bg), 32);
-    else dl->AddRectFilled(ImVec2(c.x - rr, c.y - rr), ImVec2(c.x + rr, c.y + rr), anim::Col(bg), px(10));
-    if (a > 0.01f) {
-        // halo
-        for (int i = 0; i < 4; ++i)
-            dl->AddCircle(c, rr + i * px(1.5f), anim::Col(anim::WithAlpha(accent, 0.12f * a * (1 - i / 4.f))), 32, px(1.5f));
-    }
+    else dl->AddRectFilled(ImVec2(c.x - rr, c.y - rr), ImVec2(c.x + rr, c.y + rr), anim::Col(bg), px(6));
     ImVec4 ic = anim::Lerp(theme::TextDim, theme::Text, h);
     ic = anim::Lerp(ic, accent, a);
-    DrawIcon(dl, icon, c, size * 0.52f * scale, anim::Col(ic));
+    DrawIcon(dl, icon, c, size * 0.5f, anim::Col(ic));
     Tooltip(tooltip);
     ImGui::PopID();
     return pressed;
@@ -251,46 +249,40 @@ bool IconButton(const char* id, Icon icon, float size, const char* tooltip, bool
 static bool ButtonBase(const char* label, ImVec2 size, Icon icon, bool primary) {
     ImGuiStyle& st = ImGui::GetStyle();
     const char* end = ImGui::FindRenderedTextEnd(label);
+    ImGui::PushFont(theme::fonts.semibold);
     ImVec2 ts = ImGui::CalcTextSize(label, end);
     float iconW = (int)icon >= 0 ? ts.y + px(6) : 0.f;
-    if (size.x <= 0) size.x = ts.x + iconW + st.FramePadding.x * 2.2f;
+    if (size.x <= 0) size.x = ts.x + iconW + st.FramePadding.x * 2.4f;
     if (size.y <= 0) size.y = ts.y + st.FramePadding.y * 2;
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool pressed = ImGui::InvisibleButton(label, size);
     ImGuiID id = ImGui::GetItemID();
     bool hov = ImGui::IsItemHovered(), held = ImGui::IsItemActive();
     bool disabled = (ImGui::GetItemFlags() & ImGuiItemFlags_Disabled) != 0;
-    float h = anim::To(id, hov ? 1.f : 0.f, 14.f);
+    float h = anim::To(id, hov ? 1.f : 0.f, 16.f);
     float pr = anim::To(id + 1, held ? 1.f : 0.f, 25.f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 a = p, b(p.x + size.x, p.y + size.y);
-    float shrink = pr * px(1.5f);
-    a.x += shrink; a.y += shrink; b.x -= shrink; b.y -= shrink;
-    float r = st.FrameRounding;
+    float r = px(6);
+    ImVec4 tc;
     if (primary) {
-        // brilho externo no hover
-        if (h > 0.01f)
-            for (int i = 1; i <= 4; ++i)
-                dl->AddRect(ImVec2(a.x - i * px(1.5f), a.y - i * px(1.5f)), ImVec2(b.x + i * px(1.5f), b.y + i * px(1.5f)),
-                            anim::Col(anim::WithAlpha(theme::Cyan, 0.10f * h * (1 - i / 5.f))), r + i * px(1.5f), 0, px(1.5f));
-        ImU32 c1 = anim::Col(anim::Lerp(ImVec4(0.18f, 0.55f, 0.95f, 1), ImVec4(0.25f, 0.70f, 1.0f, 1), h));
-        ImU32 c2 = anim::Col(anim::Lerp(ImVec4(0.45f, 0.30f, 0.95f, 1), ImVec4(0.58f, 0.42f, 1.0f, 1), h));
-        // gradiente horizontal com cantos arredondados: fundo sólido + gradiente interno
-        dl->AddRectFilled(a, b, c1, r);
-        dl->AddRectFilledMultiColor(ImVec2(a.x + r, a.y), ImVec2(b.x - r, b.y), c1, c2, c2, c1);
-        dl->AddRectFilled(ImVec2(b.x - r * 2, a.y), b, c2, r, ImDrawFlags_RoundCornersRight);
-        // reflexo superior
-        dl->AddRectFilled(ImVec2(a.x + 1, a.y + 1), ImVec2(b.x - 1, a.y + (b.y - a.y) * 0.45f), anim::Col(ImVec4(1, 1, 1, 0.08f + 0.05f * h)), r, ImDrawFlags_RoundCornersTop);
+        ImVec4 base = anim::Lerp(theme::Cyan, ImVec4(0.32f, 0.65f, 1.f, 1.f), h);
+        base = anim::Lerp(base, theme::Blue, pr);
+        dl->AddRectFilled(a, b, anim::Col(base), r);
+        // linha de luz no topo (acabamento de "botão físico")
+        dl->AddLine(ImVec2(a.x + r, a.y + 1), ImVec2(b.x - r, a.y + 1), anim::Col(ImVec4(1, 1, 1, 0.22f)), px(1));
+        tc = ImVec4(1, 1, 1, 1);
     } else {
-        dl->AddRectFilled(a, b, anim::Col(ImVec4(1, 1, 1, 0.04f + 0.05f * h)), r);
-        dl->AddRect(a, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.10f), anim::WithAlpha(theme::Cyan, 0.55f), h)), r, 0, px(1));
+        dl->AddRectFilled(a, b, anim::Col(anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), ImVec4(0.153f, 0.173f, 0.208f, 1.f), h)), r);
+        dl->AddRect(a, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.08f), anim::WithAlpha(theme::Cyan, 0.6f), h)), r, 0, px(1));
+        tc = anim::Lerp(theme::TextDim, theme::Text, h);
     }
-    ImVec4 tc = primary ? ImVec4(1, 1, 1, 1) : anim::Lerp(theme::TextDim, theme::Text, h);
-    if (disabled) tc.w *= 0.5f;
+    if (disabled) tc.w *= 0.45f;
     float cx = (a.x + b.x) * 0.5f - (ts.x + iconW) * 0.5f;
     float cy = (a.y + b.y) * 0.5f;
-    if ((int)icon >= 0) DrawIcon(dl, icon, ImVec2(cx + ts.y * 0.5f, cy), ts.y * 0.95f, anim::Col(tc));
+    if ((int)icon >= 0) DrawIcon(dl, icon, ImVec2(cx + ts.y * 0.5f, cy), ts.y * 0.9f, anim::Col(tc));
     dl->AddText(ImVec2(cx + iconW, cy - ts.y * 0.5f), anim::Col(tc), label, end);
+    ImGui::PopFont();
     return pressed;
 }
 
@@ -299,8 +291,8 @@ bool GhostButton(const char* label, ImVec2 size, Icon icon) { return ButtonBase(
 
 bool Toggle(const char* label, bool* v, const char* hint) {
     ImGui::PushID(label);
-    float hgt = ImGui::GetFrameHeight() * 0.78f;
-    float wdt = hgt * 1.85f;
+    float hgt = ImGui::GetFrameHeight() * 0.62f;
+    float wdt = hgt * 1.8f;
     ImVec2 p = ImGui::GetCursorScreenPos();
     float avail = ImGui::GetContentRegionAvail().x;
     ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
@@ -309,19 +301,18 @@ bool Toggle(const char* label, bool* v, const char* hint) {
     if (pressed) *v = !*v;
     ImGuiID id = ImGui::GetItemID();
     bool hov = ImGui::IsItemHovered();
-    float t = anim::Spring(id, *v ? 1.f : 0.f, 260.f, 22.f);
+    float t = anim::Spring(id, *v ? 1.f : 0.f, 300.f, 26.f);
     float h = anim::To(id + 7, hov ? 1.f : 0.f, 14.f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (h > 0.01f) dl->AddRectFilled(ImVec2(p.x - px(6), p.y), ImVec2(p.x + avail + px(2), p.y + rowH), anim::Col(ImVec4(1, 1, 1, 0.03f * h)), px(6));
     ImVec2 a(p.x + avail - wdt, p.y + (rowH - hgt) * 0.5f);
     ImVec2 b(a.x + wdt, a.y + hgt);
-    ImVec4 off(1, 1, 1, 0.10f + 0.05f * h);
-    ImVec4 on = theme::Cyan;
-    dl->AddRectFilled(a, b, anim::Col(anim::Lerp(off, on, anim::Clamp01(t))), hgt * 0.5f);
-    float r = hgt * 0.5f - px(3);
+    ImVec4 off(0.20f, 0.22f, 0.26f, 1.f);
+    dl->AddRectFilled(a, b, anim::Col(anim::Lerp(off, theme::Cyan, anim::Clamp01(t))), hgt * 0.5f);
+    float r = hgt * 0.5f - px(2.5f);
     float kx = a.x + hgt * 0.5f + (wdt - hgt) * t;
-    dl->AddCircleFilled(ImVec2(kx, a.y + hgt * 0.5f + px(1)), r, anim::Col(ImVec4(0, 0, 0, 0.25f)), 24);
-    dl->AddCircleFilled(ImVec2(kx, a.y + hgt * 0.5f), r * (1.f + 0.06f * h), anim::Col(ImVec4(1, 1, 1, 1)), 24);
-    dl->AddText(ImVec2(p.x, p.y + (rowH - ts.y) * 0.5f), anim::Col(anim::Lerp(theme::TextDim, theme::Text, h)), label,
+    dl->AddCircleFilled(ImVec2(kx, a.y + hgt * 0.5f), r, anim::Col(ImVec4(1, 1, 1, 1)), 24);
+    dl->AddText(ImVec2(p.x, p.y + (rowH - ts.y) * 0.5f), anim::Col(anim::Lerp(theme::TextDim, theme::Text, std::max(h, t * 0.6f))), label,
                 ImGui::FindRenderedTextEnd(label));
     if (hint) Tooltip(hint);
     ImGui::PopID();
@@ -330,19 +321,19 @@ bool Toggle(const char* label, bool* v, const char* hint) {
 
 bool Chip(const char* label, float appear) {
     ImVec2 ts = ImGui::CalcTextSize(label);
-    ImVec2 size(ts.x + px(28), ts.y + px(14));
+    ImVec2 size(ts.x + px(24), ts.y + px(12));
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool pressed = ImGui::InvisibleButton(label, size);
     ImGuiID id = ImGui::GetItemID();
-    float h = anim::To(id, ImGui::IsItemHovered() ? 1.f : 0.f, 14.f);
-    float e = anim::EaseOutBack(appear);
-    float dy = (1 - e) * px(14) - h * px(2);
+    float h = anim::To(id, ImGui::IsItemHovered() ? 1.f : 0.f, 16.f);
+    float e = anim::EaseOutCubic(appear);
+    float dy = (1 - e) * px(10);
     float alpha = anim::Clamp01(appear * 1.5f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 a(p.x, p.y + dy), b(p.x + size.x, p.y + size.y + dy);
-    dl->AddRectFilled(a, b, anim::Col(ImVec4(1, 1, 1, (0.045f + 0.05f * h) * alpha)), size.y * 0.5f);
-    dl->AddRect(a, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.10f), anim::WithAlpha(theme::Cyan, 0.6f), h), alpha), size.y * 0.5f, 0, px(1));
-    dl->AddText(ImVec2(a.x + px(14), a.y + px(7)), anim::Col(anim::Lerp(theme::TextDim, theme::Text, h), alpha), label);
+    dl->AddRectFilled(a, b, anim::Col(anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), ImVec4(0.153f, 0.173f, 0.208f, 1.f), h), alpha), px(6));
+    dl->AddRectFilled(a, ImVec2(a.x + px(3), b.y), anim::Col(anim::WithAlpha(theme::Cyan, 0.35f + 0.65f * h), alpha), px(6), ImDrawFlags_RoundCornersLeft);
+    dl->AddText(ImVec2(a.x + px(13), a.y + px(6)), anim::Col(anim::Lerp(theme::TextDim, theme::Text, h), alpha), label);
     return pressed;
 }
 
@@ -363,55 +354,58 @@ void Spinner(const char* id, float radius, float thickness, ImVec4 color) {
 void Progress(float f, ImVec2 size, bool indet) {
     ImVec2 p = ImGui::GetCursorScreenPos();
     if (size.x <= 0) size.x = ImGui::GetContentRegionAvail().x;
-    if (size.y <= 0) size.y = px(8);
+    if (size.y <= 0) size.y = px(6);
     ImGui::Dummy(size);
     ImGuiID id = ImGui::GetItemID() ? ImGui::GetItemID() : ImGui::GetID("##prog");
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 b(p.x + size.x, p.y + size.y);
-    float r = size.y * 0.5f;
+    float r = px(2);
     dl->AddRectFilled(p, b, anim::Col(ImVec4(1, 1, 1, 0.07f)), r);
     float t = anim::Time();
     if (indet) {
         float x = std::fmod(t * 0.7f, 1.4f) - 0.4f;
         float x0 = std::max(0.f, x), x1 = std::min(1.f, x + 0.4f);
-        if (x1 > x0)
-            dl->AddRectFilled(ImVec2(p.x + size.x * x0, p.y), ImVec2(p.x + size.x * x1, b.y), anim::Col(theme::Cyan), r);
+        if (x1 > x0) dl->AddRectFilled(ImVec2(p.x + size.x * x0, p.y), ImVec2(p.x + size.x * x1, b.y), anim::Col(theme::Cyan), r);
         return;
     }
     float shown = anim::To(id, anim::Clamp01(f), 6.f, 0.f);
-    float wfill = std::max(size.y, size.x * shown);
-    ImU32 c1 = anim::Col(theme::Cyan), c2 = anim::Col(theme::Violet);
-    dl->AddRectFilled(p, ImVec2(p.x + wfill, b.y), c1, r);
-    dl->AddRectFilledMultiColor(ImVec2(p.x + r, p.y), ImVec2(p.x + wfill - r, b.y), c1, c2, c2, c1);
-    // brilho deslizante
-    float sx = p.x + std::fmod(t * 0.6f, 1.f) * wfill;
-    dl->PushClipRect(p, ImVec2(p.x + wfill, b.y), true);
-    dl->AddRectFilledMultiColor(ImVec2(sx - px(30), p.y), ImVec2(sx, b.y), IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 70),
-                                IM_COL32(255, 255, 255, 70), IM_COL32(255, 255, 255, 0));
-    dl->AddRectFilledMultiColor(ImVec2(sx, p.y), ImVec2(sx + px(30), b.y), IM_COL32(255, 255, 255, 70), IM_COL32(255, 255, 255, 0),
-                                IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 70));
-    dl->PopClipRect();
+    dl->AddRectFilled(p, ImVec2(p.x + std::max(size.y, size.x * shown), b.y), anim::Col(theme::Cyan), r);
 }
 
+// Título de seção: marcador azul + texto condensado em maiúsculas + linha fina.
 void SectionTitle(const char* label, Icon icon) {
-    ImGui::Dummy(ImVec2(0, px(4)));
+    (void)icon;
+    ImGui::Dummy(ImVec2(0, px(8)));
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    float x = p.x;
-    ImGui::PushFont(theme::fonts.semibold);
+    ImGui::PushFont(theme::fonts.label);
     float hgt = ImGui::GetTextLineHeight();
-    if ((int)icon >= 0) {
-        DrawIcon(dl, icon, ImVec2(x + hgt * 0.5f, p.y + hgt * 0.5f), hgt * 0.95f, anim::Col(theme::Cyan));
-        x += hgt + px(8);
+    std::wstring w;
+    {
+        int n = MultiByteToWideChar(CP_UTF8, 0, label, -1, nullptr, 0);
+        w.resize(n);
+        MultiByteToWideChar(CP_UTF8, 0, label, -1, w.data(), n);
+        CharUpperW(w.data());
+        int m = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string up(m, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, up.data(), m, nullptr, nullptr);
+        up.resize(strlen(up.c_str()));
+        dl->AddRectFilled(ImVec2(p.x, p.y + hgt * 0.18f), ImVec2(p.x + px(3), p.y + hgt * 0.86f), anim::Col(theme::Cyan), px(1));
+        // espaçamento entre letras
+        float x = p.x + px(11);
+        const char* s = up.c_str();
+        while (*s) {
+            const char* nx = s;
+            unsigned int cp;
+            nx += ImTextCharFromUtf8(&cp, s, nullptr);
+            dl->AddText(ImVec2(x, p.y), anim::Col(theme::TextDim), s, nx);
+            x += ImGui::CalcTextSize(s, nx).x + px(1.2f);
+            s = nx;
+        }
+        float rx = p.x + ImGui::GetContentRegionAvail().x;
+        if (rx > x + px(10)) dl->AddLine(ImVec2(x + px(10), p.y + hgt * 0.55f), ImVec2(rx, p.y + hgt * 0.55f), anim::Col(ImVec4(1, 1, 1, 0.07f)), px(1));
     }
-    dl->AddText(ImVec2(x, p.y), anim::Col(theme::Text), label);
-    float tw = ImGui::CalcTextSize(label).x;
     ImGui::PopFont();
-    float lx = x + tw + px(12);
-    float rx = p.x + ImGui::GetContentRegionAvail().x;
-    if (rx > lx)
-        dl->AddRectFilledMultiColor(ImVec2(lx, p.y + hgt * 0.5f), ImVec2(rx, p.y + hgt * 0.5f + px(1)),
-                                    anim::Col(theme::Border, 2.f), anim::Col(theme::Border, 0.f), anim::Col(theme::Border, 0.f), anim::Col(theme::Border, 2.f));
     ImGui::Dummy(ImVec2(0, hgt + px(4)));
 }
 
@@ -434,29 +428,27 @@ void StatusDot(ImVec4 color, bool pulse) {
     ImGui::Dummy(ImVec2(s * 0.7f, s));
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 c(p.x + s * 0.35f, p.y + s * 0.5f);
-    float r = s * 0.2f;
+    float r = s * 0.18f;
     if (pulse) {
         float t = std::fmod(anim::Time() * 0.9f, 1.f);
-        dl->AddCircleFilled(c, r * (1 + 1.6f * t), anim::Col(anim::WithAlpha(color, 0.45f * (1 - t))), 20);
+        dl->AddCircleFilled(c, r * (1 + 1.4f * t), anim::Col(anim::WithAlpha(color, 0.35f * (1 - t))), 20);
     }
     dl->AddCircleFilled(c, r, anim::Col(color), 16);
 }
 
+// Cartão: fundo sólido, borda fina e (opcional) barra de cor à esquerda.
 void BeginCard(const char* id, ImVec4 tint, float width) {
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(16), px(14)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(16), px(13)));
     ImGui::BeginChild(id, ImVec2(width, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleVar();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 a = ImGui::GetWindowPos(), sz = ImGui::GetWindowSize();
     ImVec2 b(a.x + sz.x, a.y + sz.y);
-    float r = px(14);
-    dl->AddRectFilled(a, b, anim::Col(ImVec4(1, 1, 1, 0.035f)), r);
-    if (tint.w > 0) {
-        dl->AddRectFilledMultiColor(ImVec2(a.x + r * 0.3f, a.y), ImVec2(b.x - r * 0.3f, a.y + std::min(sz.y, px(60))),
-                                    anim::Col(tint, 0.10f), anim::Col(tint, 0.03f), anim::Col(tint, 0.0f), anim::Col(tint, 0.0f));
-    }
-    dl->AddRect(a, b, anim::Col(tint.w > 0 ? anim::WithAlpha(tint, 0.25f) : ImVec4(1, 1, 1, 0.07f)), r, 0, px(1));
+    float r = px(8);
+    dl->AddRectFilled(a, b, anim::Col(ImVec4(0.098f, 0.110f, 0.133f, 0.97f)), r);
+    dl->AddRect(a, b, anim::Col(ImVec4(1, 1, 1, 0.06f)), r, 0, px(1));
+    if (tint.w > 0) dl->AddRectFilled(a, ImVec2(a.x + px(3), b.y), anim::Col(tint), r, ImDrawFlags_RoundCornersLeft);
 }
 
 void EndCard() { ImGui::EndChild(); }
@@ -465,11 +457,11 @@ void Badge(const char* label, ImVec4 color) {
     ImGui::PushFont(theme::fonts.caption);
     ImVec2 ts = ImGui::CalcTextSize(label);
     ImVec2 p = ImGui::GetCursorScreenPos();
-    ImVec2 size(ts.x + px(14), ts.y + px(4));
+    ImVec2 size(ts.x + px(12), ts.y + px(4));
     ImGui::Dummy(size);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), anim::Col(anim::WithAlpha(color, 0.16f)), size.y * 0.5f);
-    dl->AddText(ImVec2(p.x + px(7), p.y + px(2)), anim::Col(color), label);
+    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), anim::Col(anim::WithAlpha(color, 0.15f)), px(4));
+    dl->AddText(ImVec2(p.x + px(6), p.y + px(2)), anim::Col(color), label);
     ImGui::PopFont();
 }
 

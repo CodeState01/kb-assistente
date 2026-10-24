@@ -8,21 +8,22 @@ Fonts fonts;
 static float g_scale = 1.f;
 float S() { return g_scale; }
 
-const ImVec4 Bg        = ImVec4(0.035f, 0.045f, 0.085f, 1.00f);
-const ImVec4 Bg2       = ImVec4(0.060f, 0.050f, 0.130f, 1.00f);
-const ImVec4 Panel     = ImVec4(0.075f, 0.090f, 0.150f, 0.97f);
-const ImVec4 PanelHi   = ImVec4(0.110f, 0.130f, 0.210f, 1.00f);
-const ImVec4 Border    = ImVec4(0.300f, 0.350f, 0.550f, 0.25f);
-const ImVec4 Text      = ImVec4(0.930f, 0.950f, 1.000f, 1.00f);
-const ImVec4 TextDim   = ImVec4(0.640f, 0.680f, 0.800f, 1.00f);
-const ImVec4 TextFaint = ImVec4(0.420f, 0.460f, 0.600f, 1.00f);
-const ImVec4 Cyan      = ImVec4(0.300f, 0.820f, 0.980f, 1.00f);
-const ImVec4 Blue      = ImVec4(0.300f, 0.480f, 1.000f, 1.00f);
-const ImVec4 Violet    = ImVec4(0.560f, 0.400f, 1.000f, 1.00f);
-const ImVec4 Pink      = ImVec4(0.970f, 0.330f, 0.680f, 1.00f);
-const ImVec4 Green     = ImVec4(0.200f, 0.900f, 0.640f, 1.00f);
-const ImVec4 Amber     = ImVec4(1.000f, 0.720f, 0.300f, 1.00f);
-const ImVec4 Red       = ImVec4(1.000f, 0.380f, 0.420f, 1.00f);
+// Identidade KB: preto grafite de academia, azul da logo e vermelho do Muay Thai.
+const ImVec4 Bg        = ImVec4(0.043f, 0.047f, 0.059f, 1.00f);   // #0B0C0F
+const ImVec4 Bg2       = ImVec4(0.063f, 0.071f, 0.086f, 1.00f);   // #101216
+const ImVec4 Panel     = ImVec4(0.082f, 0.094f, 0.114f, 1.00f);   // #15181D
+const ImVec4 PanelHi   = ImVec4(0.110f, 0.125f, 0.153f, 1.00f);   // #1C2027
+const ImVec4 Border    = ImVec4(0.600f, 0.650f, 0.750f, 0.14f);
+const ImVec4 Text      = ImVec4(0.953f, 0.957f, 0.965f, 1.00f);
+const ImVec4 TextDim   = ImVec4(0.631f, 0.655f, 0.702f, 1.00f);
+const ImVec4 TextFaint = ImVec4(0.392f, 0.420f, 0.471f, 1.00f);
+const ImVec4 Cyan      = ImVec4(0.180f, 0.565f, 1.000f, 1.00f);   // azul KB (destaque principal)
+const ImVec4 Blue      = ImVec4(0.122f, 0.435f, 0.878f, 1.00f);   // azul escuro
+const ImVec4 Violet    = ImVec4(0.420f, 0.520f, 0.700f, 1.00f);   // azul-aço (sem roxo)
+const ImVec4 Pink      = ImVec4(1.000f, 0.302f, 0.380f, 1.00f);   // vermelho claro
+const ImVec4 Green     = ImVec4(0.133f, 0.773f, 0.369f, 1.00f);
+const ImVec4 Amber     = ImVec4(0.961f, 0.647f, 0.141f, 1.00f);
+const ImVec4 Red       = ImVec4(0.902f, 0.224f, 0.275f, 1.00f);   // vermelho Muay Thai
 
 static std::string WinFont(const char* file) {
     char dir[MAX_PATH];
@@ -81,8 +82,12 @@ void Load(float scale) {
     fonts.body = add(ui, 17.f);
     fonts.caption = add(ui, 14.f);
     fonts.semibold = add(sb, 17.f);
-    fonts.title = add(sb, 24.f);
-    fonts.huge = add(sb, 34.f);
+    // títulos em fonte condensada esportiva (Bahnschrift, do Windows 10/11)
+    std::string disp = WinFont("bahnschrift.ttf");
+    if (disp.empty()) disp = sb;
+    fonts.title = add(disp, 24.f);
+    fonts.huge = add(disp, 40.f);
+    fonts.label = add(disp, 14.f);
     fonts.mono = add(mono, 15.f);
     io.FontDefault = fonts.body;
 
@@ -92,15 +97,15 @@ void Load(float scale) {
     s.FramePadding = ImVec2(12, 8);
     s.ItemSpacing = ImVec2(10, 9);
     s.ItemInnerSpacing = ImVec2(8, 6);
-    s.ScrollbarSize = 10;
-    s.GrabMinSize = 12;
+    s.ScrollbarSize = 8;
+    s.GrabMinSize = 8;
     s.WindowRounding = 0;   // janelas nativas já têm cantos arredondados (Win11)
-    s.ChildRounding = 14;
-    s.FrameRounding = 10;
-    s.PopupRounding = 12;
-    s.ScrollbarRounding = 8;
-    s.GrabRounding = 8;
-    s.TabRounding = 9;
+    s.ChildRounding = 8;
+    s.FrameRounding = 6;
+    s.PopupRounding = 8;
+    s.ScrollbarRounding = 3;
+    s.GrabRounding = 3;
+    s.TabRounding = 4;
     s.WindowBorderSize = 0;
     s.ChildBorderSize = 0;
     s.PopupBorderSize = 1;
@@ -112,56 +117,58 @@ void Load(float scale) {
     s.ScaleAllSizes(scale);
 
     ImVec4* c = s.Colors;
+    const ImVec4 acc = Cyan;                             // azul KB
+    auto A = [&](float a) { return ImVec4(acc.x, acc.y, acc.z, a); };
     c[ImGuiCol_Text] = Text;
     c[ImGuiCol_TextDisabled] = TextFaint;
-    c[ImGuiCol_WindowBg] = ImVec4(0.050f, 0.060f, 0.110f, 1.0f);
+    c[ImGuiCol_WindowBg] = Panel;
     c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_PopupBg] = ImVec4(0.070f, 0.080f, 0.140f, 0.98f);
+    c[ImGuiCol_PopupBg] = ImVec4(0.098f, 0.110f, 0.133f, 0.99f);
     c[ImGuiCol_Border] = Border;
     c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg] = ImVec4(1, 1, 1, 0.055f);
-    c[ImGuiCol_FrameBgHovered] = ImVec4(1, 1, 1, 0.085f);
-    c[ImGuiCol_FrameBgActive] = ImVec4(0.30f, 0.82f, 0.98f, 0.16f);
-    c[ImGuiCol_TitleBg] = ImVec4(0.050f, 0.060f, 0.110f, 1.0f);
-    c[ImGuiCol_TitleBgActive] = ImVec4(0.070f, 0.085f, 0.150f, 1.0f);
-    c[ImGuiCol_TitleBgCollapsed] = ImVec4(0.050f, 0.060f, 0.110f, 1.0f);
+    c[ImGuiCol_FrameBg] = ImVec4(0.118f, 0.133f, 0.161f, 1.f);
+    c[ImGuiCol_FrameBgHovered] = ImVec4(0.141f, 0.157f, 0.188f, 1.f);
+    c[ImGuiCol_FrameBgActive] = ImVec4(0.153f, 0.173f, 0.208f, 1.f);
+    c[ImGuiCol_TitleBg] = Bg2;
+    c[ImGuiCol_TitleBgActive] = Panel;
+    c[ImGuiCol_TitleBgCollapsed] = Bg2;
     c[ImGuiCol_MenuBarBg] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_ScrollbarGrab] = ImVec4(1, 1, 1, 0.10f);
     c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(1, 1, 1, 0.18f);
-    c[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.30f, 0.82f, 0.98f, 0.5f);
-    c[ImGuiCol_CheckMark] = Cyan;
-    c[ImGuiCol_SliderGrab] = Cyan;
-    c[ImGuiCol_SliderGrabActive] = ImVec4(0.6f, 0.92f, 1.0f, 1.0f);
-    c[ImGuiCol_Button] = ImVec4(1, 1, 1, 0.06f);
-    c[ImGuiCol_ButtonHovered] = ImVec4(1, 1, 1, 0.11f);
-    c[ImGuiCol_ButtonActive] = ImVec4(0.30f, 0.82f, 0.98f, 0.25f);
-    c[ImGuiCol_Header] = ImVec4(0.30f, 0.82f, 0.98f, 0.12f);
-    c[ImGuiCol_HeaderHovered] = ImVec4(0.30f, 0.82f, 0.98f, 0.18f);
-    c[ImGuiCol_HeaderActive] = ImVec4(0.30f, 0.82f, 0.98f, 0.26f);
+    c[ImGuiCol_ScrollbarGrabActive] = A(0.7f);
+    c[ImGuiCol_CheckMark] = acc;
+    c[ImGuiCol_SliderGrab] = acc;
+    c[ImGuiCol_SliderGrabActive] = ImVec4(0.45f, 0.70f, 1.0f, 1.0f);
+    c[ImGuiCol_Button] = ImVec4(0.118f, 0.133f, 0.161f, 1.f);
+    c[ImGuiCol_ButtonHovered] = ImVec4(0.153f, 0.173f, 0.208f, 1.f);
+    c[ImGuiCol_ButtonActive] = A(0.35f);
+    c[ImGuiCol_Header] = A(0.14f);
+    c[ImGuiCol_HeaderHovered] = A(0.22f);
+    c[ImGuiCol_HeaderActive] = A(0.32f);
     c[ImGuiCol_Separator] = Border;
-    c[ImGuiCol_SeparatorHovered] = ImVec4(0.30f, 0.82f, 0.98f, 0.5f);
-    c[ImGuiCol_SeparatorActive] = Cyan;
-    c[ImGuiCol_ResizeGrip] = ImVec4(1, 1, 1, 0.05f);
-    c[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.82f, 0.98f, 0.4f);
-    c[ImGuiCol_ResizeGripActive] = Cyan;
-    c[ImGuiCol_Tab] = ImVec4(1, 1, 1, 0.03f);
-    c[ImGuiCol_TabHovered] = ImVec4(0.30f, 0.82f, 0.98f, 0.20f);
-    c[ImGuiCol_TabSelected] = ImVec4(0.30f, 0.82f, 0.98f, 0.13f);
-    c[ImGuiCol_TabSelectedOverline] = Cyan;
-    c[ImGuiCol_TabDimmed] = ImVec4(1, 1, 1, 0.02f);
-    c[ImGuiCol_TabDimmedSelected] = ImVec4(1, 1, 1, 0.07f);
-    c[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.5f, 0.5f, 0.7f, 0.5f);
-    c[ImGuiCol_DockingPreview] = ImVec4(0.30f, 0.82f, 0.98f, 0.35f);
+    c[ImGuiCol_SeparatorHovered] = A(0.6f);
+    c[ImGuiCol_SeparatorActive] = acc;
+    c[ImGuiCol_ResizeGrip] = ImVec4(1, 1, 1, 0.04f);
+    c[ImGuiCol_ResizeGripHovered] = A(0.5f);
+    c[ImGuiCol_ResizeGripActive] = acc;
+    c[ImGuiCol_Tab] = Bg2;
+    c[ImGuiCol_TabHovered] = PanelHi;
+    c[ImGuiCol_TabSelected] = Panel;
+    c[ImGuiCol_TabSelectedOverline] = acc;
+    c[ImGuiCol_TabDimmed] = Bg2;
+    c[ImGuiCol_TabDimmedSelected] = Panel;
+    c[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(1, 1, 1, 0.15f);
+    c[ImGuiCol_DockingPreview] = A(0.35f);
     c[ImGuiCol_DockingEmptyBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TableHeaderBg] = ImVec4(1, 1, 1, 0.06f);
+    c[ImGuiCol_TableHeaderBg] = ImVec4(1, 1, 1, 0.05f);
     c[ImGuiCol_TableBorderStrong] = Border;
     c[ImGuiCol_TableBorderLight] = ImVec4(1, 1, 1, 0.05f);
     c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TableRowBgAlt] = ImVec4(1, 1, 1, 0.025f);
-    c[ImGuiCol_TextSelectedBg] = ImVec4(0.30f, 0.82f, 0.98f, 0.3f);
-    c[ImGuiCol_NavCursor] = ImVec4(0.30f, 0.82f, 0.98f, 0.6f);
-    c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, 0.5f);
+    c[ImGuiCol_TableRowBgAlt] = ImVec4(1, 1, 1, 0.02f);
+    c[ImGuiCol_TextSelectedBg] = A(0.35f);
+    c[ImGuiCol_NavCursor] = A(0.6f);
+    c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, 0.6f);
 }
 
 } // namespace theme

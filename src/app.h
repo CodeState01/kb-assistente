@@ -242,6 +242,14 @@ private:
     std::vector<std::pair<std::thread, std::shared_ptr<std::atomic<bool>>>> bg_;
     double nextModelPoll_ = 0;
     bool silent_ = false;
+
+    // comandos locais (criar treino, timer)
+    bool HandleLocalCommand(const std::string& q, bool fromVoice);
+    void Reply(const std::string& msg, bool fromVoice, bool expectAnswer);
+    std::mutex dialogMtx_;
+    int dlgStep_ = 0, dlgRounds_ = 3, dlgRoundSec_ = 180;
+    std::string dlgName_;
+    std::atomic<bool> autoListen_{false};
 };
 
 double NowSeconds();

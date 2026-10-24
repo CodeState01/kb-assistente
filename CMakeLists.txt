@@ -81,6 +81,7 @@ set(KB_OPTS /utf-8 /W3 /permissive-)
 add_executable(KB WIN32
   src/main.cpp
   src/app.cpp
+  src/app_commands.cpp
   src/core/config.cpp
   src/core/platform.cpp
   src/core/text.cpp

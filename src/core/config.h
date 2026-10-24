@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 // Tipos de backend de IA suportados.
 enum class LlmBackend : int {
@@ -67,6 +68,8 @@ struct Config {
     int timerRounds = 3, timerRoundSec = 180, timerRestSec = 60, timerPrepSec = 10, timerWarnSec = 10;
     int timerStartSound = 0, timerEndSound = 0, timerWarnSound = 6;
     bool timerVoice = true;
+    int timerVolume = 40;                  // volume dos sinais (0-100)
+    std::vector<std::string> workouts;     // treinos salvos: "nome|rounds|segundos|descanso"
 
     bool firstRun = true;
 };

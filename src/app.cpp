@@ -213,6 +213,18 @@ void App::Init(bool startedMinimized) {
         std::vector<PicturePtr> pics;
         DWORD na = GetEnvironmentVariableW(L"KB_ATTACH", a, 1024);
         if (na && na < 1024) pics.push_back(img::FromFile(text::Narrow(std::wstring(a, na))));
+        // KB_SCRIPT="fala 1|fala 2|..." — simula uma conversa (uma fala a cada 1,5 s)
+        DWORD ns = GetEnvironmentVariableW(L"KB_SCRIPT", q, 1024);
+        if (ns && ns < 1024) {
+            auto lines = text::Split(text::Narrow(std::wstring(q, ns)), '|');
+            Spawn([this, lines] {
+                for (auto& l : lines) {
+                    if (quit_) return;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+                    SendText(l);
+                }
+            });
+        }
         DWORD n = GetEnvironmentVariableW(L"KB_ASK", q, 1024);
         if (n && n < 1024) SendText(text::Narrow(std::wstring(q, n)), false, pics);
     }
@@ -266,6 +278,11 @@ void App::Update() {
             if (it->second->load()) { it->first.join(); it = bg_.erase(it); }
             else ++it;
         }
+    }
+    // conversa guiada por voz: escuta a resposta assim que terminar de falar
+    if (autoListen_ && !TtsSpeaking() && state_ == AssistState::Idle) {
+        autoListen_ = false;
+        StartListening();
     }
     if (now >= nextModelPoll_ && !modelsLoading_) {
         nextModelPoll_ = now + (backendOnline_ ? 60.0 : 8.0);
@@ -324,30 +341,15 @@ void App::SendText(const std::string& t, bool fromVoice, std::vector<PicturePtr>
     pics.erase(std::remove(pics.begin(), pics.end(), nullptr), pics.end());
     if (q.empty() && pics.empty()) return;
     if (q.empty()) q = "O que você vê nesta imagem?";
+    const bool userPics = !pics.empty();
     // Com a tela compartilhada, cada pergunta leva o quadro mais recente.
     if (screen_.Active()) {
         if (auto frame = screen_.Latest()) pics.push_back(frame);
     }
     AssistState s = state_.load();
     if (s == AssistState::Thinking || s == AssistState::Speaking) Interrupt();
+    if (!userPics && HandleLocalCommand(q, fromVoice)) return; // treinos / timer
     AddMessage(true, q, false, fromVoice);
-    // Comando local: abrir / iniciar o timer de rounds
-    {
-        std::string f = text::Fold(q);
-        bool timerWord = f.find("timer") != std::string::npos || f.find("cronometro") != std::string::npos ||
-                         f.find("round") != std::string::npos && (f.find("inicia") != std::string::npos || f.find("comeca") != std::string::npos);
-        if (timerWord && pics.empty() && f.size() < 80) {
-            bool start = f.find("inici") != std::string::npos || f.find("comec") != std::string::npos || f.find("liga") != std::string::npos ||
-                         f.find("start") != std::string::npos || f.find("bora") != std::string::npos;
-            requestTimer = start ? 2 : 1;
-            std::string reply = start ? "Timer iniciado. Bom treino!" : "Abri o timer de rounds. É só apertar Iniciar quando quiser.";
-            int id = AddMessage(false, reply, false);
-            (void)id;
-            if (Cfg().speakReplies) Say(reply);
-            if (state_ == AssistState::Thinking || state_ == AssistState::Transcribing) SetState(AssistState::Idle);
-            return;
-        }
-    }
     if (!pics.empty()) {
         std::lock_guard<std::mutex> l(msgMtx_);
         messages_.back().pictures = std::move(pics);

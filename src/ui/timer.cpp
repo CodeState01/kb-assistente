@@ -1,5 +1,6 @@
 #include "ui/timer.h"
 #include "app.h"
+#include "core/text.h"
 #include "ui/anim.h"
 #include "ui/embeds.h"
 #include "ui/orb.h"
@@ -31,7 +32,7 @@ struct Wave {
 // Sino: parciais inarmônicos com decaimento exponencial (cada parcial some mais rápido)
 void Bell(Wave& w, float at, float f0, float decay, float gain) {
     static const float ratios[] = {0.5f, 1.f, 1.183f, 1.506f, 2.f, 2.514f, 2.662f, 3.011f};
-    static const float amps[] = {0.35f, 1.f, 0.55f, 0.45f, 0.4f, 0.25f, 0.2f, 0.15f};
+    static const float amps[] = {0.30f, 1.f, 0.38f, 0.26f, 0.20f, 0.10f, 0.07f, 0.04f}; // agudos suaves: menos estridente
     w.Ensure(at + decay * 1.2f);
     size_t start = (size_t)(at * kSR);
     for (int p = 0; p < 8; ++p) {
@@ -99,7 +100,7 @@ void Clack(Wave& w, float at, float gain) {
 std::vector<char> ToWav(const Wave& w) {
     float peak = 0.001f;
     for (float v : w.s) peak = std::max(peak, std::fabs(v));
-    float norm = 0.85f / peak;
+    float norm = 0.7f / peak;
     size_t n = w.s.size();
     std::vector<char> wav(44 + n * 2);
     auto w32 = [&](int off, uint32_t v) { memcpy(&wav[off], &v, 4); };
@@ -124,7 +125,7 @@ const std::vector<char>& SoundWav(int id) {
     if (!cache[id].empty() || id == kSoundCount - 1) return cache[id];
     Wave w;
     switch (id) {
-    case 0: for (int i = 0; i < 3; ++i) Bell(w, i * 0.32f, 1050.f, 0.9f, 1.f); break;
+    case 0: for (int i = 0; i < 3; ++i) Bell(w, i * 0.34f, 880.f, 0.85f, 1.f); break;
     case 1: Bell(w, 0, 620.f, 2.6f, 1.f); break;
     case 2: Gong(w, 0, 1.f); break;
     case 3: Tone(w, 0, 0.35f, 2900.f, 0.8f, false, 0.03f); Tone(w, 0.48f, 0.7f, 2900.f, 0.8f, false, 0.03f); break;
@@ -136,15 +137,32 @@ const std::vector<char>& SoundWav(int id) {
     return cache[id];
 }
 
-void Play(int id) {
-    const auto& b = SoundWav(id);
-    if (!b.empty()) PlaySoundW((LPCWSTR)b.data(), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+int g_volume = 40; // 0-100 (Config::timerVolume)
+
+// Toca um WAV em memória aplicando o volume (curva perceptiva).
+void PlayScaled(const std::vector<char>& b) {
+    if (b.size() <= 44 || g_volume <= 0) return;
+    static std::vector<char> bufs[2];
+    static int k = 0;
+    k ^= 1;
+    std::vector<char>& o = bufs[k];
+    o = b;
+    float v = std::pow(std::clamp(g_volume, 0, 100) / 100.f, 1.6f);
+    for (size_t i = 44; i + 1 < o.size(); i += 2) {
+        int16_t smp;
+        memcpy(&smp, &o[i], 2);
+        smp = (int16_t)(smp * v);
+        memcpy(&o[i], &smp, 2);
+    }
+    PlaySoundW((LPCWSTR)o.data(), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
 }
+
+void Play(int id) { PlayScaled(SoundWav(id)); }
 
 void Beep(bool high) {
     static std::vector<char> lo, hi;
     if (lo.empty()) { Wave a; Tone(a, 0, 0.12f, 880.f, 0.6f); lo = ToWav(a); Wave b; Tone(b, 0, 0.3f, 1320.f, 0.7f); hi = ToWav(b); }
-    PlaySoundW((LPCWSTR)(high ? hi : lo).data(), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+    PlayScaled(high ? hi : lo);
 }
 
 // ------------------------------------------------------------------ Motor do timer
@@ -234,6 +252,7 @@ const char* Badge() { return g_badge; }
 
 void Tick(App& app) {
     g_badge[0] = 0;
+    g_volume = app.Cfg().timerVolume;
     if (g.phase == Stopped) return;
     if (g.phase == Done) {
         if (Now() - g.doneAt > 8) g.phase = Stopped;
@@ -352,6 +371,50 @@ void Window(App& app, bool* open) {
         ImGui::PopID();
     }
 
+    // ---- treinos criados pela pessoa (por voz: "KB, criar treino")
+    w::SectionTitle("Meus treinos", Icon::Sparkle);
+    if (c.workouts.empty()) w::Hint("Diga \"KB, criar treino\" ou clique abaixo: eu pergunto o nome, quantos rounds e quanto tempo.");
+    int removeIdx = -1;
+    for (size_t i = 0; i < c.workouts.size(); ++i) {
+        auto parts = text::Split(c.workouts[i], '|');
+        if (parts.size() < 4) continue;
+        int r = atoi(parts[1].c_str()), rs = atoi(parts[2].c_str()), rest = atoi(parts[3].c_str());
+        ImGui::PushID(1000 + (int)i);
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        float rowW = ImGui::GetContentRegionAvail().x, rowH = ImGui::GetFrameHeight() + px(14);
+        bool active = c.timerRounds == r && c.timerRoundSec == rs && c.timerRestSec == rest;
+        bool clicked = ImGui::InvisibleButton("##w", ImVec2(rowW - px(80), rowH));
+        bool hov = ImGui::IsItemHovered();
+        ImDrawList* dl2 = ImGui::GetWindowDrawList();
+        dl2->AddRectFilled(p, ImVec2(p.x + rowW, p.y + rowH), anim::Col(hov ? theme::PanelHi : ImVec4(0.118f, 0.133f, 0.161f, 1.f)), px(6));
+        dl2->AddRectFilled(p, ImVec2(p.x + px(3), p.y + rowH), anim::Col(active ? theme::Red : theme::Cyan), px(6), ImDrawFlags_RoundCornersLeft);
+        ImGui::PushFont(theme::fonts.semibold);
+        dl2->AddText(ImVec2(p.x + px(14), p.y + px(4)), anim::Col(theme::Text), parts[0].c_str());
+        ImGui::PopFont();
+        char det[96];
+        snprintf(det, sizeof(det), "%d rounds × %s  ·  descanso %s", r, Clock(rs).c_str(), rest ? Clock(rest).c_str() : "nenhum");
+        ImGui::PushFont(theme::fonts.caption);
+        dl2->AddText(ImVec2(p.x + px(14), p.y + rowH * 0.5f + px(1)), anim::Col(theme::TextDim), det);
+        ImGui::PopFont();
+        if (clicked) { c.timerRounds = r; c.timerRoundSec = rs; c.timerRestSec = rest; ch = true; }
+        ImGui::SameLine(0, 0);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + rowW - px(76), p.y + (rowH - px(32)) * 0.5f));
+        if (w::IconButton("play", Icon::Play, px(32), "Começar este treino")) {
+            c.timerRounds = r; c.timerRoundSec = rs; c.timerRestSec = rest;
+            app.ApplyConfig(c);
+            Start(app);
+        }
+        ImGui::SameLine(0, px(6));
+        if (w::IconButton("del", Icon::Trash, px(32), "Apagar")) removeIdx = (int)i;
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + rowH + px(6)));
+        ImGui::Dummy(ImVec2(0, 0));
+        ImGui::PopID();
+    }
+    if (removeIdx >= 0) { c.workouts.erase(c.workouts.begin() + removeIdx); ch = true; }
+    if (w::GhostButton("Novo treino", ImVec2(0, 0), Icon::Mic)) app.SendText("criar treino");
+    ImGui::SameLine();
+    w::Hint("Também por voz: \"KB, começar treino <nome>\".");
+
     // ---- ajustes
     w::SectionTitle("Ajustes", Icon::Gear);
     char fmt[64];
@@ -390,6 +453,10 @@ void Window(App& app, bool* open) {
     soundCombo("Início do round", "s1", &c.timerStartSound);
     soundCombo("Fim do round", "s2", &c.timerEndSound);
     soundCombo("Aviso (últimos segundos)", "s3", &c.timerWarnSound);
+    ImGui::SetNextItemWidth(-1);
+    snprintf(fmt, sizeof(fmt), c.timerVolume ? "Volume dos sinais: %d%%%%" : "Sinais sem som", c.timerVolume);
+    if (ImGui::SliderInt("##vol", &c.timerVolume, 0, 100, fmt)) ch = true;
+    if (ImGui::IsItemDeactivatedAfterEdit()) { g_volume = c.timerVolume; Play(c.timerStartSound); }
     ch |= w::Toggle("Anunciar por voz (round, descanso, últimos segundos)", &c.timerVoice);
     w::Hint("Dica: peça por voz \"KB, abre o timer\" ou use o ícone de cronômetro na barra lateral.");
 

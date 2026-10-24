@@ -12,7 +12,7 @@ void DrawIcon(ImDrawList* dl, Icon icon, ImVec2 center, float size, ImU32 col, f
 
 // Botão redondo/quadrado com ícone, brilho animado ao passar o mouse.
 bool IconButton(const char* id, Icon icon, float size, const char* tooltip = nullptr, bool active = false,
-                ImVec4 accent = ImVec4(0, 0, 0, 0), bool round = true);
+                ImVec4 accent = ImVec4(0, 0, 0, 0), bool round = false);
 // Botão com gradiente.
 bool PrimaryButton(const char* label, ImVec2 size = ImVec2(0, 0), Icon icon = (Icon)-1);
 // Botão discreto com borda.

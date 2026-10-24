@@ -132,3 +132,73 @@ std::string GreetingForNow() {
 }
 
 } // namespace text
+
+namespace text {
+
+static std::vector<std::string> Words(const std::string& folded) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : folded) {
+        if (isalnum((unsigned char)c)) cur += c;
+        else { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
+}
+
+bool ParseIntPt(const std::string& s, int* out) {
+    std::string f = Fold(s);
+    for (size_t i = 0; i < f.size(); ++i)
+        if (isdigit((unsigned char)f[i])) { *out = atoi(f.c_str() + i); return true; }
+    static const struct { const char* w; int v; } kNum[] = {
+        {"zero", 0}, {"um", 1}, {"uma", 1}, {"dois", 2}, {"duas", 2}, {"tres", 3}, {"quatro", 4}, {"cinco", 5},
+        {"seis", 6}, {"sete", 7}, {"oito", 8}, {"nove", 9}, {"dez", 10}, {"onze", 11}, {"doze", 12}, {"treze", 13},
+        {"quatorze", 14}, {"catorze", 14}, {"quinze", 15}, {"dezesseis", 16}, {"dezessete", 17}, {"dezoito", 18},
+        {"dezenove", 19}, {"vinte", 20}, {"trinta", 30}, {"quarenta", 40}, {"cinquenta", 50}, {"sessenta", 60},
+        {"setenta", 70}, {"oitenta", 80}, {"noventa", 90}, {"cem", 100}, {"cento", 100}, {"duzentos", 200}, {"trezentos", 300}};
+    int total = 0;
+    bool any = false;
+    for (auto& w : Words(f))
+        for (auto& n : kNum)
+            if (w == n.w) { total += n.v; any = true; break; }
+    if (any) *out = total;
+    return any;
+}
+
+int ParseDurationPt(const std::string& s) {
+    std::string f = Fold(s);
+    // "2:30"
+    size_t colon = f.find(':');
+    if (colon != std::string::npos && colon > 0 && isdigit((unsigned char)f[colon - 1])) {
+        size_t a = colon;
+        while (a > 0 && isdigit((unsigned char)f[a - 1])) --a;
+        return atoi(f.c_str() + a) * 60 + atoi(f.c_str() + colon + 1);
+    }
+    bool meio = f.find("meio") != std::string::npos || f.find("meia") != std::string::npos;
+    size_t m = f.find("min");
+    if (m != std::string::npos) {
+        int mins = 0, secs = 0;
+        bool hasMin = ParseIntPt(f.substr(0, m), &mins);
+        std::string rest = f.substr(m);
+        size_t sp = rest.find(' ');
+        if (sp != std::string::npos && rest.find("seg") != std::string::npos) ParseIntPt(rest.substr(sp), &secs);
+        if (!hasMin && meio) return 30;          // "meio minuto"
+        return mins * 60 + secs + (meio ? 30 : 0);
+    }
+    int v = 0;
+    if (!ParseIntPt(f, &v)) return meio ? 30 : -1;
+    if (f.find("seg") != std::string::npos) return v;
+    // sem unidade: números pequenos são minutos ("3" = 3 minutos), grandes são segundos ("90")
+    return v <= 15 ? v * 60 + (meio ? 30 : 0) : v;
+}
+
+std::string DurationPt(int sec) {
+    char b[64];
+    int m = sec / 60, s = sec % 60;
+    if (m && s) snprintf(b, sizeof(b), "%d min e %d s", m, s);
+    else if (m) snprintf(b, sizeof(b), m == 1 ? "%d minuto" : "%d minutos", m);
+    else snprintf(b, sizeof(b), "%d segundos", s);
+    return b;
+}
+
+} // namespace text

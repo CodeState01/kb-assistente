@@ -190,13 +190,9 @@ bool Segmented(const char* id, int* v, const char* const* labels, int n) {
     float sw = wdt / n;
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(p, ImVec2(p.x + wdt, p.y + h), anim::Col(ImVec4(1, 1, 1, 0.05f)), h * 0.5f);
-    float hx = anim::Spring(ImGui::GetID("hl"), *v * sw, 220.f, 22.f);
-    ImVec2 a(p.x + hx + px(3), p.y + px(3)), b(p.x + hx + sw - px(3), p.y + h - px(3));
-    dl->AddRectFilledMultiColor(ImVec2(a.x + h * 0.4f, a.y), ImVec2(b.x - h * 0.4f, b.y), anim::Col(theme::Blue, 0.6f),
-                                anim::Col(theme::Violet, 0.6f), anim::Col(theme::Violet, 0.6f), anim::Col(theme::Blue, 0.6f));
-    dl->AddRectFilled(a, ImVec2(a.x + h, b.y), anim::Col(theme::Blue, 0.6f), (h - px(6)) * 0.5f, ImDrawFlags_RoundCornersLeft);
-    dl->AddRectFilled(ImVec2(b.x - h, a.y), b, anim::Col(theme::Violet, 0.6f), (h - px(6)) * 0.5f, ImDrawFlags_RoundCornersRight);
+    dl->AddRectFilled(p, ImVec2(p.x + wdt, p.y + h), anim::Col(ImVec4(0.118f, 0.133f, 0.161f, 1.f)), px(7));
+    float hx = anim::Spring(ImGui::GetID("hl"), *v * sw, 260.f, 26.f);
+    dl->AddRectFilled(ImVec2(p.x + hx + px(3), p.y + px(3)), ImVec2(p.x + hx + sw - px(3), p.y + h - px(3)), anim::Col(theme::Cyan), px(5));
     for (int i = 0; i < n; ++i) {
         ImGui::SetCursorScreenPos(ImVec2(p.x + i * sw, p.y));
         ImGui::PushID(i);
@@ -227,8 +223,8 @@ void TrackFocus(int idx) {
 void TitleBar(App& app, ImGuiViewport* vp, float h) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 a = vp->Pos, b(vp->Pos.x + vp->Size.x, vp->Pos.y + h);
-    dl->AddRectFilledMultiColor(a, b, anim::Col(ImVec4(1, 1, 1, 0.035f)), anim::Col(ImVec4(1, 1, 1, 0.035f)),
-                                anim::Col(ImVec4(1, 1, 1, 0.0f)), anim::Col(ImVec4(1, 1, 1, 0.0f)));
+    dl->AddRectFilled(a, b, anim::Col(theme::Bg2));
+    dl->AddLine(ImVec2(a.x, b.y - 0.5f), ImVec2(b.x, b.y - 0.5f), anim::Col(ImVec4(1, 1, 1, 0.06f)), px(1));
     float x = a.x + px(18);
     float cy = a.y + h * 0.5f;
     {
@@ -239,7 +235,7 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
         float active = g_mode == OrbMode::Idle ? 0.f : 1.f;
         float glow = anim::To(ImGui::GetID("##logoGlow"), active, 4.f);
         float pulse = 0.5f + 0.5f * std::sin(anim::Time() * 4.f);
-        orbfx::RadialGradient(dl, lc, lr * 0.8f, lr * (1.6f + 0.3f * pulse * glow), anim::Col(anim::WithAlpha(acc, 0.25f + 0.35f * glow)), anim::Col(anim::WithAlpha(acc, 0)), 32);
+        (void)pulse;
         if (ImTextureID lt = assets::Logo())
             dl->AddImageRounded(lt, ImVec2(lc.x - lr, lc.y - lr), ImVec2(lc.x + lr, lc.y + lr), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, lr);
         else {
@@ -247,14 +243,16 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
             OrbInput in = MakeOrbInput(app, g_mode, hist, 16, false, false, true);
             g_logoOrb.Draw(dl, lc, px(10), in);
         }
-        dl->AddCircle(lc, lr + px(1), anim::Col(anim::WithAlpha(acc, 0.4f + 0.4f * glow)), 32, px(1.2f));
+        dl->AddCircle(lc, lr + px(1.5f), anim::Col(anim::WithAlpha(acc, 0.25f + 0.75f * glow)), 32, px(1.5f));
     }
     x += px(40);
-    ImGui::PushFont(theme::fonts.semibold);
+    ImGui::PushFont(theme::fonts.title);
     float th = ImGui::GetTextLineHeight();
     dl->AddText(ImVec2(x, cy - th * 0.5f), anim::Col(theme::Text), "KB");
-    x += ImGui::CalcTextSize("KB").x + px(16);
+    x += ImGui::CalcTextSize("KB").x + px(14);
     ImGui::PopFont();
+    dl->AddLine(ImVec2(x, cy - px(9)), ImVec2(x, cy + px(9)), anim::Col(ImVec4(1, 1, 1, 0.10f)), px(1));
+    x += px(14);
 
     // pílula de status do modelo
     ImGui::PushFont(theme::fonts.caption);
@@ -265,9 +263,8 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
     std::string label = std::string(backend) + "  ·  " + (model.empty() ? "sem modelo" : model);
     if (!online) label = std::string(backend) + "  ·  " + (app.ModelsLoading() ? "conectando…" : "offline");
     ImVec2 ts = ImGui::CalcTextSize(label.c_str());
-    float pw = ts.x + px(34), ph = ts.y + px(10);
-    ImVec2 pa(x, cy - ph * 0.5f), pb(x + pw, cy + ph * 0.5f);
-    dl->AddRectFilled(pa, pb, anim::Col(ImVec4(1, 1, 1, 0.05f)), ph * 0.5f);
+    float pw = ts.x + px(20), ph = ts.y + px(10);
+    ImVec2 pa(x - px(6), cy - ph * 0.5f), pb(x + pw, cy + ph * 0.5f);
     ImVec4 dot = online ? theme::Green : app.ModelsLoading() ? theme::Amber : theme::Red;
     float pt = std::fmod(anim::Time(), 1.5f) / 1.5f;
     dl->AddCircleFilled(ImVec2(pa.x + px(13), cy), px(3.5f) * (1 + pt * 1.5f), anim::Col(anim::WithAlpha(dot, 0.35f * (1 - pt))), 16);
@@ -293,8 +290,8 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
         float w2 = ts2.x + px(40), h2 = ts2.y + px(10);
         ImVec2 a2(leftLimit - w2, cy - h2 * 0.5f), b2(leftLimit, cy + h2 * 0.5f);
         float pulse = timer::Running() ? 0.5f + 0.5f * std::sin(anim::Time() * 3.f) : 0.f;
-        dl->AddRectFilled(a2, b2, anim::Col(anim::WithAlpha(theme::Red, 0.16f + 0.08f * pulse)), h2 * 0.5f);
-        dl->AddRect(a2, b2, anim::Col(anim::WithAlpha(theme::Red, 0.5f)), h2 * 0.5f, 0, px(1));
+        dl->AddRectFilled(a2, b2, anim::Col(anim::WithAlpha(theme::Red, 0.16f + 0.08f * pulse)), px(5));
+        dl->AddRect(a2, b2, anim::Col(anim::WithAlpha(theme::Red, 0.5f)), px(5), 0, px(1));
         w::DrawIcon(dl, Icon::Clock, ImVec2(a2.x + px(16), cy), ts2.y, anim::Col(theme::Text));
         dl->AddText(ImVec2(a2.x + px(28), cy - ts2.y * 0.5f), anim::Col(theme::Text), tb);
         ImGui::PopFont();
@@ -327,10 +324,10 @@ void TitleBar(App& app, ImGuiViewport* vp, float h) {
             ImVec2 a2(x2 - w2, cy - h2 * 0.5f), b2(x2, cy + h2 * 0.5f);
             if (a2.x < hx + px(4)) break;
             ImVec4 vc = p.value > 85 ? theme::Red : p.value > 60 ? theme::Amber : p.col;
-            dl->AddRectFilled(a2, b2, anim::Col(ImVec4(1, 1, 1, 0.05f)), h2 * 0.5f);
+            dl->AddRectFilled(a2, b2, anim::Col(ImVec4(0.118f, 0.133f, 0.161f, 1.f)), px(5));
             // barra de uso ao fundo
             float fill = anim::To(ImGui::GetID(p.label.substr(0, 3).c_str()), p.value / 100.f, 4.f);
-            dl->AddRectFilled(a2, ImVec2(a2.x + (b2.x - a2.x) * fill, b2.y), anim::Col(anim::WithAlpha(vc, 0.10f)), h2 * 0.5f);
+            dl->AddRectFilled(a2, ImVec2(a2.x + (b2.x - a2.x) * fill, b2.y), anim::Col(anim::WithAlpha(vc, 0.12f)), px(5));
             dl->AddText(ImVec2(a2.x + px(10), cy - lts.y * 0.5f), anim::Col(theme::TextDim), p.label.c_str());
             // sparkline dos últimos 60 s
             ImVec2 g0(b2.x - graphW - px(8), a2.y + px(5)), g1(b2.x - px(8), b2.y - px(5));
@@ -405,8 +402,9 @@ void Sidebar(App& app, ImGuiViewport* vp, float top, float wdt) {
     float y0 = vp->Pos.y + top + px(12);
     float x = vp->Pos.x + (wdt - bs) * 0.5f;
     float iy = anim::Spring(ImGui::GetID("##sideind"), y0 + g_sel * step, 200.f, 20.f);
-    dl->AddRectFilled(ImVec2(vp->Pos.x + px(4), iy + px(9)), ImVec2(vp->Pos.x + px(7), iy + bs - px(9)), anim::Col(theme::Cyan), px(2));
-    orbfx::RadialGradient(dl, ImVec2(vp->Pos.x + px(6), iy + bs * 0.5f), 0, px(22), anim::Col(anim::WithAlpha(theme::Cyan, 0.25f)), anim::Col(anim::WithAlpha(theme::Cyan, 0)), 24);
+    dl->AddRectFilled(ImVec2(vp->Pos.x, vp->Pos.y + top), ImVec2(vp->Pos.x + wdt, vp->Pos.y + vp->Size.y), anim::Col(theme::Bg2));
+    dl->AddLine(ImVec2(vp->Pos.x + wdt - 0.5f, vp->Pos.y + top), ImVec2(vp->Pos.x + wdt - 0.5f, vp->Pos.y + vp->Size.y), anim::Col(ImVec4(1, 1, 1, 0.06f)), px(1));
+    dl->AddRectFilled(ImVec2(vp->Pos.x, iy + px(8)), ImVec2(vp->Pos.x + px(3), iy + bs - px(8)), anim::Col(theme::Cyan), px(1));
     for (int i = 0; i < (int)std::size(items); ++i) {
         ImGui::SetCursorScreenPos(ImVec2(x, y0 + i * step));
         ImGui::PushID(i);
@@ -589,7 +587,7 @@ void ThinkingSection(Message& m) {
     if (k > 0.01f) {
         ImGui::PushFont(theme::fonts.caption);
         ImGui::PushStyleColor(ImGuiCol_Text, anim::WithAlpha(theme::TextDim, 0.9f * k));
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.56f, 0.40f, 1.f, 0.06f * k));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.f, 1.f, 1.f, 0.035f * k));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(10));
         float full = ImGui::CalcTextSize(m.thinking.c_str(), nullptr, false, wdt - px(28)).y + px(18);
         float hgt = std::min(full, px(220)) * anim::EaseOutCubic(k);
@@ -637,13 +635,10 @@ void MessageView(App& app, Message& m, float width) {
         ImGui::PopStyleVar();
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 a = ImGui::GetWindowPos(), sz = ImGui::GetWindowSize(), b(a.x + sz.x, a.y + sz.y);
-        float r = px(16);
+        float r = px(10);
         ImDrawFlags corners = ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight | ImDrawFlags_RoundCornersBottomLeft;
-        dl->AddRectFilled(a, b, anim::Col(ImVec4(0.22f, 0.40f, 0.95f, 0.55f)), r, corners);
-        dl->AddRectFilledMultiColor(ImVec2(a.x + r, a.y), ImVec2(b.x - r * 0.3f, b.y), anim::Col(ImVec4(0.22f, 0.40f, 0.95f, 0.0f)),
-                                    anim::Col(ImVec4(0.50f, 0.32f, 0.95f, 0.45f)), anim::Col(ImVec4(0.50f, 0.32f, 0.95f, 0.45f)),
-                                    anim::Col(ImVec4(0.22f, 0.40f, 0.95f, 0.0f)));
-        dl->AddRect(a, b, anim::Col(ImVec4(0.6f, 0.75f, 1.f, 0.25f)), r, corners, px(1));
+        dl->AddRectFilled(a, b, anim::Col(theme::Blue), r, corners);
+        dl->AddLine(ImVec2(a.x + r, a.y + 1), ImVec2(b.x - r, a.y + 1), anim::Col(ImVec4(1, 1, 1, 0.15f)), px(1));
         if (!m.pictures.empty()) {
             float x0p = ImGui::GetCursorPosX(), availP = ImGui::GetContentRegionAvail().x, used = 0;
             for (size_t i = 0; i < m.pictures.size(); ++i) {
@@ -673,8 +668,11 @@ void MessageView(App& app, Message& m, float width) {
         ImVec2 ap = ImGui::GetCursorScreenPos();
         ImDrawList* pdl = ImGui::GetWindowDrawList();
         ImVec2 ac(ap.x + av * 0.5f, ap.y + av * 0.5f + px(2));
-        orbfx::RadialGradient(pdl, ac, 0, av * 0.5f, anim::Col(theme::Cyan), anim::Col(theme::Violet), 24);
-        orbfx::RadialGradient(pdl, ImVec2(ac.x - av * 0.12f, ac.y - av * 0.14f), 0, av * 0.25f, anim::Col(ImVec4(1, 1, 1, 0.5f)), anim::Col(ImVec4(1, 1, 1, 0)), 16);
+        if (ImTextureID lt = assets::Logo())
+            pdl->AddImageRounded(lt, ImVec2(ac.x - av * 0.5f, ac.y - av * 0.5f), ImVec2(ac.x + av * 0.5f, ac.y + av * 0.5f), ImVec2(0, 0), ImVec2(1, 1),
+                                 ImGui::GetColorU32(ImVec4(1, 1, 1, 1)), av * 0.5f);
+        else
+            pdl->AddCircleFilled(ac, av * 0.5f, anim::Col(theme::Cyan), 24);
         if (m.streaming) {
             float t = std::fmod(anim::Time() * 1.2f, 1.f);
             pdl->AddCircle(ac, av * 0.5f + t * px(8), anim::Col(anim::WithAlpha(theme::Cyan, 0.5f * (1 - t))), 24, px(1.5f));
@@ -698,12 +696,12 @@ void MessageView(App& app, Message& m, float width) {
         ImGui::PopStyleVar();
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 a = ImGui::GetWindowPos(), sz = ImGui::GetWindowSize(), b(a.x + sz.x, a.y + sz.y);
-        float r = px(16);
+        float r = px(10);
         ImDrawFlags corners = ImDrawFlags_RoundCornersTopRight | ImDrawFlags_RoundCornersBottomLeft | ImDrawFlags_RoundCornersBottomRight;
-        ImVec4 bg = m.error ? ImVec4(1.f, 0.35f, 0.4f, 0.10f) : ImVec4(1, 1, 1, 0.05f);
-        ImVec4 bd = m.error ? ImVec4(1.f, 0.4f, 0.45f, 0.35f) : ImVec4(1, 1, 1, 0.08f);
+        ImVec4 bg = m.error ? ImVec4(0.20f, 0.08f, 0.09f, 0.96f) : ImVec4(0.082f, 0.094f, 0.114f, 0.94f);
         dl->AddRectFilled(a, b, anim::Col(bg), r, corners);
-        dl->AddRect(a, b, anim::Col(bd), r, corners, px(1));
+        dl->AddRect(a, b, anim::Col(ImVec4(1, 1, 1, 0.06f)), r, corners, px(1));
+        dl->AddRectFilled(a, ImVec2(a.x + px(3), b.y), anim::Col(m.error ? theme::Red : theme::Cyan), r, ImDrawFlags_RoundCornersBottomLeft);
         bool showThink = g_edit.showThinking && !m.thinking.empty();
         if (showThink) ThinkingSection(m);
         if (m.streaming && m.text.empty() && showThink) {
@@ -744,12 +742,8 @@ void InputBar(App& app) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float f = anim::To(ImGui::GetID("##inF"), g_inputFocused ? 1.f : 0.f, 10.f);
     ImVec2 b(p.x + wdt, p.y + h);
-    if (f > 0.01f)
-        for (int i = 1; i <= 5; ++i)
-            dl->AddRect(ImVec2(p.x - i * px(1.5f), p.y - i * px(1.5f)), ImVec2(b.x + i * px(1.5f), b.y + i * px(1.5f)),
-                        anim::Col(anim::WithAlpha(theme::Cyan, 0.07f * f * (1 - i / 6.f))), h * 0.5f + i * px(1.5f), 0, px(1.5f));
-    dl->AddRectFilled(p, b, anim::Col(ImVec4(0.08f + 0.02f * f, 0.10f + 0.02f * f, 0.17f + 0.03f * f, 0.92f)), h * 0.5f);
-    dl->AddRect(p, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.08f), anim::WithAlpha(theme::Cyan, 0.55f), f)), h * 0.5f, 0, px(1));
+    dl->AddRectFilled(p, b, anim::Col(theme::Panel), px(8));
+    dl->AddRect(p, b, anim::Col(anim::Lerp(ImVec4(1, 1, 1, 0.09f), theme::Cyan, f)), px(8), 0, px(1));
 
     float btn = h - px(12);
     AssistState st = app.State();
@@ -801,15 +795,21 @@ void InputBar(App& app) {
     float mh = anim::To(mid + 1, micHov ? 1.f : 0.f, 14.f);
     ImVec2 mc(mp.x + btn * 0.5f, mp.y + btn * 0.5f);
     float lvl = app.MicLevel();
+    // gravando = vermelho (como um botão REC), com o nível do microfone em barrinhas
+    ImVec2 ma(mp.x, mp.y), mb(mp.x + btn, mp.y + btn);
+    ImVec4 mbg = anim::Lerp(anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), ImVec4(0.153f, 0.173f, 0.208f, 1.f), mh), theme::Red, lf);
+    dl->AddRectFilled(ma, mb, anim::Col(mbg), px(6));
     if (lf > 0.01f) {
-        for (int i = 0; i < 3; ++i) {
-            float ph = std::fmod(anim::Time() * 1.2f + i / 3.f, 1.f);
-            dl->AddCircle(mc, btn * 0.5f + ph * px(14) * (0.6f + lvl), anim::Col(anim::WithAlpha(theme::Green, 0.45f * (1 - ph) * lf)), 32, px(1.5f));
+        float pulse = std::fmod(anim::Time() * 1.4f, 1.f);
+        dl->AddRect(ImVec2(ma.x - pulse * px(6), ma.y - pulse * px(6)), ImVec2(mb.x + pulse * px(6), mb.y + pulse * px(6)),
+                    anim::Col(anim::WithAlpha(theme::Red, 0.6f * (1 - pulse) * lf)), px(6) + pulse * px(6), 0, px(1.5f));
+        for (int i = 0; i < 4; ++i) {
+            float v = std::clamp(lvl * (0.6f + 0.4f * std::sin(anim::Time() * 9.f + i * 1.7f)), 0.08f, 1.f);
+            float bx = ma.x + btn * (0.22f + i * 0.19f), bh = btn * 0.5f * v;
+            dl->AddLine(ImVec2(bx, mc.y - bh * 0.5f), ImVec2(bx, mc.y + bh * 0.5f), anim::Col(ImVec4(1, 1, 1, 0.9f * lf)), px(2.5f));
         }
-        orbfx::RadialGradient(dl, mc, 0, btn * 0.5f * (1 + 0.15f * lvl), anim::Col(anim::WithAlpha(theme::Green, 0.95f * lf)), anim::Col(anim::WithAlpha(theme::Cyan, 0.85f * lf)), 32);
     }
-    dl->AddCircleFilled(mc, btn * 0.5f, anim::Col(ImVec4(1, 1, 1, (0.05f + 0.06f * mh) * (1 - lf))), 32);
-    w::DrawIcon(dl, Icon::Mic, mc, btn * 0.5f, anim::Col(anim::Lerp(anim::Lerp(theme::TextDim, theme::Text, mh), ImVec4(0.02f, 0.1f, 0.1f, 1), lf)));
+    if (lf < 0.99f) w::DrawIcon(dl, Icon::Mic, mc, btn * 0.5f, anim::Col(anim::Lerp(theme::TextDim, theme::Text, mh), 1 - lf));
     if (micClick) app.ToggleListening();
 
     // enviar / parar
@@ -822,8 +822,8 @@ void InputBar(App& app) {
     float sh = anim::To(sid, sHov ? 1.f : 0.f, 14.f);
     float act = anim::To(sid + 1, (hasText || busy) ? 1.f : 0.f, 10.f);
     ImVec2 sc(sp.x + btn * 0.5f, sp.y + btn * 0.5f);
-    ImVec4 c1 = busy ? theme::Pink : theme::Blue, c2 = busy ? theme::Violet : theme::Violet;
-    orbfx::RadialGradient(dl, sc, 0, btn * 0.5f * (1 + 0.06f * sh), anim::Col(anim::WithAlpha(c1, 0.25f + 0.7f * act)), anim::Col(anim::WithAlpha(c2, 0.2f + 0.7f * act)), 32);
+    ImVec4 sbg = busy ? theme::Red : anim::Lerp(ImVec4(0.118f, 0.133f, 0.161f, 1.f), anim::Lerp(theme::Cyan, ImVec4(0.32f, 0.65f, 1.f, 1.f), sh), act);
+    dl->AddRectFilled(sp, ImVec2(sp.x + btn, sp.y + btn), anim::Col(sbg), px(6));
     w::DrawIcon(dl, busy ? Icon::Stop : Icon::Send, sc, btn * 0.5f, anim::Col(ImVec4(1, 1, 1, 0.5f + 0.5f * act)));
     if (sClick) {
         if (busy) app.Interrupt();
@@ -1665,9 +1665,10 @@ void Toasts(App& app) {
         float x = vp->Pos.x + vp->Size.x - px(24) - wdt + (1 - in) * (wdt + px(40));
         ImVec2 p(x, y - h);
         ImVec4 col = it->kind == 2 ? theme::Red : it->kind == 1 ? theme::Green : theme::Cyan;
-        dl->AddRectFilled(ImVec2(p.x + px(2), p.y + px(4)), ImVec2(p.x + wdt + px(2), p.y + h + px(4)), IM_COL32(0, 0, 0, (int)(70 * a)), px(14));
-        dl->AddRectFilled(p, ImVec2(p.x + wdt, p.y + h), ImGui::GetColorU32(ImVec4(0.09f, 0.10f, 0.18f, 0.97f * a)), px(14));
-        dl->AddRect(p, ImVec2(p.x + wdt, p.y + h), ImGui::GetColorU32(anim::WithAlpha(col, 0.45f * a)), px(14), 0, px(1));
+        dl->AddRectFilled(ImVec2(p.x + px(2), p.y + px(3)), ImVec2(p.x + wdt + px(2), p.y + h + px(3)), IM_COL32(0, 0, 0, (int)(90 * a)), px(8));
+        dl->AddRectFilled(p, ImVec2(p.x + wdt, p.y + h), ImGui::GetColorU32(ImVec4(0.098f, 0.110f, 0.133f, 0.98f * a)), px(8));
+        dl->AddRect(p, ImVec2(p.x + wdt, p.y + h), ImGui::GetColorU32(ImVec4(1, 1, 1, 0.07f * a)), px(8), 0, px(1));
+        dl->AddRectFilled(p, ImVec2(p.x + px(3), p.y + h), ImGui::GetColorU32(anim::WithAlpha(col, a)), px(8), ImDrawFlags_RoundCornersLeft);
         w::DrawIcon(dl, it->kind == 2 ? Icon::Warning : it->kind == 1 ? Icon::Check : Icon::Info, ImVec2(p.x + px(22), p.y + h * 0.5f), px(18),
                     ImGui::GetColorU32(anim::WithAlpha(col, a)));
         dl->AddText(theme::fonts.caption, theme::fonts.caption->FontSize, ImVec2(p.x + px(40), p.y + px(11)), ImGui::GetColorU32(anim::WithAlpha(theme::Text, a)),
@@ -1785,6 +1786,14 @@ void Frame(App& app, bool mainVisible) {
     if (!ImGui::IsAnyItemActive()) g_edit = cfg;
     g_mode = g_debugMode >= 0 ? (OrbMode)g_debugMode : ComputeMode(app);
 
+    static int focusTest = 3;
+    if (focusTest > 0 && --focusTest == 0) {
+        if (const char* ft = getenv("KB_FOCUS")) {
+            static std::string name = ft;
+            if (name == "timer") g_showTimer = true;
+            g_focusNext = name == "models" ? kModels : name == "embeds" ? kEmbeds : name == "timer" ? "Timer###timer" : kSettings;
+        }
+    }
     if (g_focusNext) {
         ImGui::SetWindowFocus(g_focusNext);
         g_focusNext = nullptr;
@@ -1803,6 +1812,8 @@ void Frame(App& app, bool mainVisible) {
             if (ImGuiWindow* sw = ImGui::FindWindowByName(kSettings); sw && sw->DockId)
                 ImGui::SetNextWindowDockID(sw->DockId, ImGuiCond_FirstUseEver);
             timer::Window(app, &g_showTimer);
+            ImGuiContext& gctx = *ImGui::GetCurrentContext();
+            if (ImGuiWindow* tw = ImGui::FindWindowByName("Timer###timer"); tw && gctx.NavWindow && gctx.NavWindow->RootWindow == tw) g_sel = 4;
         }
         Toasts(app);
         if (cfg.splash && (GetEnvironmentVariableW(L"KB_SNAPSHOT", nullptr, 0) == 0 || GetEnvironmentVariableW(L"KB_SPLASH", nullptr, 0) > 0)) Splash(vp);

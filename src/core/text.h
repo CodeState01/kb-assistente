@@ -18,4 +18,8 @@ std::vector<std::string> Split(const std::string& s, char sep);
 // Data/hora local, por extenso em português.
 std::string NowPortuguese();
 std::string GreetingForNow(); // "Bom dia" / "Boa tarde" / "Boa noite"
+// Números e tempos falados em português ("cinco", "vinte e cinco", "3 minutos", "2:30", "dois e meio").
+bool ParseIntPt(const std::string& s, int* out);
+int ParseDurationPt(const std::string& s); // segundos, -1 se não entendeu
+std::string DurationPt(int seconds);       // "3 minutos", "1 min e 30 s"
 }

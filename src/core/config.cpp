@@ -74,7 +74,7 @@ bool Load(Config& c) {
     GET(mobileEnabled) GET(mobileMode) GET(mobilePort) GET(mobileToken) GET(screenIntervalMs) GET(autoVisionModel)
     GET(showPerf) GET(bgImage) GET(bgOpacity) GET(showThinking) GET(splash)
     GET(timerRounds) GET(timerRoundSec) GET(timerRestSec) GET(timerPrepSec) GET(timerWarnSec)
-    GET(timerStartSound) GET(timerEndSound) GET(timerWarnSound) GET(timerVoice)
+    GET(timerStartSound) GET(timerEndSound) GET(timerWarnSound) GET(timerVoice) GET(timerVolume) GET(workouts)
     // migração da versão "Aurora"
     size_t p = c.whisperModel.find("\\Aurora\\");
     if (p != std::string::npos) c.whisperModel.replace(p, 8, "\\KB\\");
@@ -97,7 +97,7 @@ bool Save(const Config& c) {
     PUT(mobileEnabled) PUT(mobileMode) PUT(mobilePort) PUT(mobileToken) PUT(screenIntervalMs) PUT(autoVisionModel)
     PUT(showPerf) PUT(bgImage) PUT(bgOpacity) PUT(showThinking) PUT(splash)
     PUT(timerRounds) PUT(timerRoundSec) PUT(timerRestSec) PUT(timerPrepSec) PUT(timerWarnSec)
-    PUT(timerStartSound) PUT(timerEndSound) PUT(timerWarnSound) PUT(timerVoice)
+    PUT(timerStartSound) PUT(timerEndSound) PUT(timerWarnSound) PUT(timerVoice) PUT(timerVolume) PUT(workouts)
     std::wstring tmp = text::Widen(ConfigPath() + ".tmp");
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);

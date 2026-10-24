@@ -78,17 +78,19 @@ void FillStar(ImDrawList* dl, ImVec2 c, const ImVec2* pts, int n, ImU32 center, 
 
 namespace {
 struct Palette { ImVec4 a, b, c; };
+// Cores da marca: azul KB em repouso/falando, vermelho ao ouvir (como gravação), branco-azulado ao pensar.
 Palette PaletteFor(OrbMode m) {
     using namespace theme;
+    const ImVec4 ice(0.80f, 0.88f, 1.0f, 1);
     switch (m) {
-    case OrbMode::Idle: return {Cyan, Violet, Blue};
-    case OrbMode::Listening: return {ImVec4(0.25f, 0.98f, 0.75f, 1), Cyan, ImVec4(0.1f, 0.8f, 0.7f, 1)};
-    case OrbMode::Transcribing: return {ImVec4(0.45f, 0.85f, 1.0f, 1), Blue, Cyan};
-    case OrbMode::Thinking: return {Violet, Pink, ImVec4(0.5f, 0.3f, 1.0f, 1)};
-    case OrbMode::Speaking: return {ImVec4(0.40f, 0.78f, 1.0f, 1), ImVec4(0.62f, 0.45f, 1.0f, 1), Cyan};
-    case OrbMode::Showing: return {Amber, Pink, Amber};
+    case OrbMode::Idle: return {Cyan, ice, Blue};
+    case OrbMode::Listening: return {Red, ImVec4(1.f, 0.55f, 0.55f, 1), Red};
+    case OrbMode::Transcribing: return {ice, Cyan, Cyan};
+    case OrbMode::Thinking: return {ice, Cyan, Blue};
+    case OrbMode::Speaking: return {Cyan, ice, Blue};
+    case OrbMode::Showing: return {Amber, ImVec4(1.f, 0.9f, 0.7f, 1), Amber};
     case OrbMode::Error: return {Red, Pink, Red};
-    default: return {Cyan, Violet, Blue};
+    default: return {Cyan, ice, Blue};
     }
 }
 ImVec4 Mix(ImVec4 a, ImVec4 b, float t) { return anim::Lerp(a, b, t); }

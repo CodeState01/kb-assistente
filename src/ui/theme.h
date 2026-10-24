@@ -10,6 +10,7 @@ struct Fonts {
     ImFont* title = nullptr;
     ImFont* huge = nullptr;
     ImFont* mono = nullptr;
+    ImFont* label = nullptr;   // rótulos de seção (condensada, maiúsculas)
 };
 extern Fonts fonts;
 
